@@ -49,7 +49,7 @@ Make sure the following are installed:
 Clone the repository and install dependencies:
 
 ```
-git clone https://github.com/YOUR_USERNAME/tracklog.git
+git clone https://github.com/smingoli/tracklog.git
 cd tracklog
 npm install
 ```
