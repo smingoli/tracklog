@@ -1,8 +1,12 @@
 use dirs::data_local_dir;
 use std::ffi::OsStr;
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use walkdir::WalkDir;
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 pub fn app_root() -> Result<PathBuf, String> {
     let mut root = data_local_dir().ok_or("Could not resolve Local AppData path")?;
@@ -66,62 +70,89 @@ pub fn sanitize_filename(name: &str) -> String {
         .collect()
 }
 
-pub fn backup_data_to_directory(target_dir: &Path) -> Result<PathBuf, String> {
-    if !target_dir.exists() || !target_dir.is_dir() {
-        return Err("Selected backup destination is not a valid folder".into());
-    }
-
+pub fn create_backup_zip_file(target_file: &Path) -> Result<(), String> {
     let source = data_dir()?;
     if !source.exists() {
         return Err("No local TrackLog data found to back up".into());
     }
 
-    let backup_name = format!("tracklog-backup-{}", unix_timestamp());
-    let backup_root = target_dir.join(backup_name);
-    copy_directory_recursive(&source, &backup_root)?;
-    Ok(backup_root)
+    if let Some(parent) = target_file.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let file = fs::File::create(target_file).map_err(|e| e.to_string())?;
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    for entry in WalkDir::new(&source) {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(&source)
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        if relative.is_empty() {
+            continue;
+        }
+
+        if entry.file_type().is_dir() {
+            zip.add_directory(relative, options).map_err(|e| e.to_string())?;
+            continue;
+        }
+
+        zip.start_file(relative, options).map_err(|e| e.to_string())?;
+        let mut src_file = fs::File::open(path).map_err(|e| e.to_string())?;
+        let mut buf = Vec::new();
+        src_file.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+        zip.write_all(&buf).map_err(|e| e.to_string())?;
+    }
+
+    zip.finish().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
-pub fn restore_data_from_directory(backup_root: &Path) -> Result<(), String> {
-    if !backup_root.exists() || !backup_root.is_dir() {
-        return Err("Selected backup folder is not valid".into());
+pub fn restore_data_from_backup_zip(zip_path: &Path) -> Result<(), String> {
+    if !zip_path.exists() {
+        return Err("Backup archive was not found".into());
     }
 
-    let backup_db = backup_root.join("catalog.db");
-    if !backup_db.exists() {
-        return Err("Backup folder does not contain catalog.db".into());
-    }
-
+    let file = fs::File::open(zip_path).map_err(|e| e.to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|e| e.to_string())?;
     let destination = data_dir()?;
     if destination.exists() {
         fs::remove_dir_all(&destination).map_err(|e| e.to_string())?;
     }
+    fs::create_dir_all(&destination).map_err(|e| e.to_string())?;
 
-    copy_directory_recursive(backup_root, &destination)?;
-    Ok(())
-}
-
-fn copy_directory_recursive(source: &Path, destination: &Path) -> Result<(), String> {
-    fs::create_dir_all(destination).map_err(|e| e.to_string())?;
-
-    let entries = fs::read_dir(source).map_err(|e| e.to_string())?;
-    for entry in entries {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let entry_type = entry.file_type().map_err(|e| e.to_string())?;
-        let from = entry.path();
-        let to = destination.join(entry.file_name());
-
-        if entry_type.is_dir() {
-            copy_directory_recursive(&from, &to)?;
-        } else {
-            fs::copy(&from, &to).map_err(|e| e.to_string())?;
+    for i in 0..archive.len() {
+        let mut item = archive.by_index(i).map_err(|e| e.to_string())?;
+        let enclosed = item.enclosed_name().ok_or("Invalid entry in backup zip")?;
+        let out_path = destination.join(enclosed);
+        if item.name().ends_with('/') {
+            fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+            continue;
         }
+
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mut out_file = fs::File::create(&out_path).map_err(|e| e.to_string())?;
+        std::io::copy(&mut item, &mut out_file).map_err(|e| e.to_string())?;
+    }
+
+    if !destination.join("catalog.db").exists() {
+        return Err("Backup archive did not contain catalog.db".into());
     }
 
     Ok(())
 }
 
-fn unix_timestamp() -> u64 {
+pub fn backup_archive_name() -> String {
+    format!("tracklog-backup-{}.zip", unix_timestamp())
+}
+
+pub fn unix_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())

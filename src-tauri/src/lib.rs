@@ -5,10 +5,10 @@ mod models;
 
 use commands::{
     assign_track_to_release, create_release, create_track, delete_release, delete_track,
-    backup_to_google_drive_folder, get_dashboard_summary, get_release_by_id, get_track_by_id,
+    backup_to_google_drive, get_dashboard_summary, get_release_by_id, get_track_by_id,
     initialize_app, list_available_tracks, list_releases, list_tracks, list_tracks_for_release,
     move_track_down_in_release, move_track_up_in_release, remove_release_image,
-    remove_track_from_release, restore_from_google_drive_backup, search_tracks, set_release_image,
+    remove_track_from_release, restore_latest_from_google_drive, search_tracks, set_release_image,
     update_release, update_track,
 };
 
@@ -38,8 +38,8 @@ pub fn run() {
             move_track_down_in_release,
             set_release_image,
             remove_release_image,
-            backup_to_google_drive_folder,
-            restore_from_google_drive_backup
+            backup_to_google_drive,
+            restore_latest_from_google_drive
         ])
         .run(tauri::generate_context!())
         .expect("error while running SongsCatalog");

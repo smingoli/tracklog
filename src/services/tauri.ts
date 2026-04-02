@@ -93,10 +93,10 @@ export async function removeReleaseImage(releaseId: number): Promise<Release> {
   return invoke("remove_release_image", { releaseId });
 }
 
-export async function backupToGoogleDriveFolder(folderPath: string): Promise<string> {
-  return invoke("backup_to_google_drive_folder", { folderPath });
+export async function backupToGoogleDrive(accessToken: string, folderId?: string): Promise<string> {
+  return invoke("backup_to_google_drive", { accessToken, folderId: folderId || null });
 }
 
-export async function restoreFromGoogleDriveBackup(backupPath: string): Promise<void> {
-  await invoke("restore_from_google_drive_backup", { backupPath });
+export async function restoreLatestFromGoogleDrive(accessToken: string, folderId?: string): Promise<void> {
+  await invoke("restore_latest_from_google_drive", { accessToken, folderId: folderId || null });
 }

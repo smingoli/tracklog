@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { open } from "@tauri-apps/plugin-dialog";
 import {
-  backupToGoogleDriveFolder,
+  backupToGoogleDrive,
   getDashboardSummary,
   initializeApp,
-  restoreFromGoogleDriveBackup
+  restoreLatestFromGoogleDrive
 } from "../services/tauri";
 import type { DashboardSummary } from "../types/models";
 
@@ -13,6 +12,8 @@ export function HomePage() {
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [folderId, setFolderId] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -27,24 +28,18 @@ export function HomePage() {
     setData(summary);
   }
 
-  async function handleBackupToGoogleDrive() {
+  async function handleBackupToGoogleDriveApi() {
     setMessage("");
     setError("");
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: "Select your Google Drive folder"
-      });
-      if (!selected || Array.isArray(selected)) return;
-      const backupPath = await backupToGoogleDriveFolder(selected);
-      setMessage(`Backup created: ${backupPath}`);
+      const result = await backupToGoogleDrive(accessToken, folderId);
+      setMessage(result);
     } catch (e) {
       setError(String(e));
     }
   }
 
-  async function handleRestoreFromGoogleDrive() {
+  async function handleRestoreFromGoogleDriveApi() {
     setMessage("");
     setError("");
     const confirmed = window.confirm(
@@ -53,15 +48,9 @@ export function HomePage() {
     if (!confirmed) return;
 
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: "Select a TrackLog backup folder from Google Drive"
-      });
-      if (!selected || Array.isArray(selected)) return;
-      await restoreFromGoogleDriveBackup(selected);
+      await restoreLatestFromGoogleDrive(accessToken, folderId);
       await refreshSummary();
-      setMessage("Backup restored successfully.");
+      setMessage("Latest backup restored from Google Drive.");
     } catch (e) {
       setError(String(e));
     }
@@ -95,14 +84,33 @@ export function HomePage() {
       <div className="panel">
         <h3>Google Drive Backup</h3>
         <p className="muted">
-          Choose your Google Drive desktop-sync folder to create a backup, or restore from an existing backup folder.
+          Use Google Drive API directly (no desktop sync client required).
         </p>
+        <div className="form-grid">
+          <div className="field full">
+            <label>Google OAuth Access Token</label>
+            <input
+              type="password"
+              value={accessToken}
+              onChange={(e) => setAccessToken(e.target.value)}
+              placeholder="ya29..."
+            />
+          </div>
+          <div className="field full">
+            <label>Google Drive Folder ID (Optional)</label>
+            <input
+              value={folderId}
+              onChange={(e) => setFolderId(e.target.value)}
+              placeholder="If empty, uses My Drive root"
+            />
+          </div>
+        </div>
         <div className="actions">
-          <button className="btn" type="button" onClick={handleBackupToGoogleDrive}>
+          <button className="btn" type="button" onClick={handleBackupToGoogleDriveApi}>
             Backup to Google Drive
           </button>
-          <button className="btn secondary" type="button" onClick={handleRestoreFromGoogleDrive}>
-            Restore from Google Drive
+          <button className="btn secondary" type="button" onClick={handleRestoreFromGoogleDriveApi}>
+            Restore Latest from Google Drive
           </button>
         </div>
         {message && <div className="success">{message}</div>}

@@ -111,11 +111,11 @@ pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
 }
 
 #[command]
-pub fn backup_to_google_drive_folder(folder_path: String) -> Result<String, String> {
-    db::backup_to_google_drive_folder(folder_path)
+pub fn backup_to_google_drive(access_token: String, folder_id: Option<String>) -> Result<String, String> {
+    db::backup_to_google_drive(access_token, folder_id)
 }
 
 #[command]
-pub fn restore_from_google_drive_backup(backup_path: String) -> Result<(), String> {
-    db::restore_from_google_drive_backup(backup_path)
+pub fn restore_latest_from_google_drive(access_token: String, folder_id: Option<String>) -> Result<(), String> {
+    db::restore_latest_from_google_drive(access_token, folder_id)
 }

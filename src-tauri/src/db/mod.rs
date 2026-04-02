@@ -1,17 +1,36 @@
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::Deserialize;
+use serde_json::json;
 use std::fs;
 use std::path::Path;
+use tempfile::tempdir;
 
 use crate::fs::{
-    allowed_image_extension, backup_data_to_directory, db_path, ensure_storage_dirs,
-    managed_release_image_path, restore_data_from_directory,
+    allowed_image_extension, backup_archive_name, create_backup_zip_file, db_path,
+    ensure_storage_dirs, managed_release_image_path, restore_data_from_backup_zip,
 };
 use crate::models::{
     DashboardSummary, Release, ReleaseInput, ReleaseTrackRow, Track, TrackInput, TrackListRow,
 };
 
 const MIGRATION_001: &str = include_str!("../../migrations/001_initial_schema.sql");
+
+#[derive(Deserialize)]
+struct DriveUploadResponse {
+    id: String,
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct DriveFileListResponse {
+    files: Vec<DriveFile>,
+}
+
+#[derive(Deserialize)]
+struct DriveFile {
+    id: String,
+}
 
 pub fn open_connection() -> Result<Connection, String> {
     ensure_storage_dirs()?;
@@ -653,13 +672,120 @@ pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
     get_release_by_id(release_id)?.ok_or_else(|| "Could not read updated release".into())
 }
 
-pub fn backup_to_google_drive_folder(folder_path: String) -> Result<String, String> {
-    let backup_path = backup_data_to_directory(Path::new(&folder_path))?;
-    Ok(backup_path.to_string_lossy().into_owned())
+pub fn backup_to_google_drive(access_token: String, folder_id: Option<String>) -> Result<String, String> {
+    let token = access_token.trim();
+    if token.is_empty() {
+        return Err("Google Drive access token is required".into());
+    }
+
+    let tmp_dir = tempdir().map_err(|e| e.to_string())?;
+    let backup_name = backup_archive_name();
+    let archive_path = tmp_dir.path().join(&backup_name);
+    create_backup_zip_file(&archive_path)?;
+    let archive_bytes = fs::read(&archive_path).map_err(|e| e.to_string())?;
+
+    let mut metadata = json!({
+        "name": backup_name,
+        "mimeType": "application/zip"
+    });
+    if let Some(folder) = folder_id
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        metadata["parents"] = json!([folder]);
+    }
+
+    let metadata_part =
+        reqwest::blocking::multipart::Part::text(metadata.to_string()).mime_str("application/json")
+            .map_err(|e| e.to_string())?;
+    let file_part =
+        reqwest::blocking::multipart::Part::bytes(archive_bytes).file_name(backup_name.clone());
+    let form = reqwest::blocking::multipart::Form::new()
+        .part("metadata", metadata_part)
+        .part("file", file_part);
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name")
+        .bearer_auth(token)
+        .multipart(form)
+        .send()
+        .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let body = response.text().unwrap_or_else(|_| "".to_string());
+        return Err(format!("Google Drive upload failed: {}", body));
+    }
+
+    let upload: DriveUploadResponse = response.json().map_err(|e| e.to_string())?;
+    Ok(format!("Uploaded backup as {} ({})", upload.name, upload.id))
 }
 
-pub fn restore_from_google_drive_backup(backup_path: String) -> Result<(), String> {
-    restore_data_from_directory(Path::new(&backup_path))?;
+pub fn restore_latest_from_google_drive(access_token: String, folder_id: Option<String>) -> Result<(), String> {
+    let token = access_token.trim();
+    if token.is_empty() {
+        return Err("Google Drive access token is required".into());
+    }
+
+    let mut query_parts = vec![
+        "name contains 'tracklog-backup-'".to_string(),
+        "trashed = false".to_string(),
+    ];
+    if let Some(folder) = folder_id
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        query_parts.push(format!("'{}' in parents", folder.replace('\'', "\\'")));
+    }
+    let query = query_parts.join(" and ");
+
+    let client = reqwest::blocking::Client::new();
+    let list_response = client
+        .get("https://www.googleapis.com/drive/v3/files")
+        .bearer_auth(token)
+        .query(&[
+            ("q", query.as_str()),
+            ("orderBy", "createdTime desc"),
+            ("pageSize", "1"),
+            ("fields", "files(id)"),
+        ])
+        .send()
+        .map_err(|e| e.to_string())?;
+
+    if !list_response.status().is_success() {
+        let body = list_response.text().unwrap_or_else(|_| "".to_string());
+        return Err(format!("Google Drive list failed: {}", body));
+    }
+
+    let list: DriveFileListResponse = list_response.json().map_err(|e| e.to_string())?;
+    let newest = list
+        .files
+        .first()
+        .ok_or("No TrackLog backup files found in Google Drive")?;
+
+    let download_url = format!(
+        "https://www.googleapis.com/drive/v3/files/{}?alt=media",
+        newest.id
+    );
+    let download_response = client
+        .get(download_url)
+        .bearer_auth(token)
+        .send()
+        .map_err(|e| e.to_string())?;
+
+    if !download_response.status().is_success() {
+        let body = download_response.text().unwrap_or_else(|_| "".to_string());
+        return Err(format!("Google Drive download failed: {}", body));
+    }
+
+    let tmp_dir = tempdir().map_err(|e| e.to_string())?;
+    let archive_path = tmp_dir.path().join("tracklog-restore.zip");
+    let bytes = download_response.bytes().map_err(|e| e.to_string())?;
+    fs::write(&archive_path, &bytes).map_err(|e| e.to_string())?;
+
+    restore_data_from_backup_zip(Path::new(&archive_path))?;
     initialize_database()?;
     Ok(())
 }
