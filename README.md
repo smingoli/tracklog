@@ -1,27 +1,123 @@
-# SongsCatalog V1 Core Complete Baseline
+# TrackLog
 
-This package extends the previous baseline and aims to cover the full agreed **v1 core**.
+TrackLog is a lightweight desktop application built with Tauri for managing and organizing song-related data locally.
 
-## Implemented in this package
-- Local AppData storage init
-- migration-aware SQLite startup
-- dashboard summary queries
-- Track CRUD
-- Release CRUD
-- assign track to release
-- remove track from release
-- list only available tracks for assignment
-- reorder tracks inside a release
-- continuous track numbering
-- release image set / replace / remove
-- managed image storage under:
-  - `%LOCALAPPDATA%\SongsCatalog\data\images\releases\`
+This project combines a modern web frontend with a Rust backend, delivering a fast, secure, and minimal desktop experience.
 
-## Important notes
-- This is still a code baseline, not a compiled Windows installer.
-- The code is structured to match the agreed requirements and should be used as the next implementation base.
-- Image picking uses the Tauri dialog plugin from the frontend.
+---
 
-## Expected storage paths
-- `%LOCALAPPDATA%\SongsCatalog\data\catalog.db`
-- `%LOCALAPPDATA%\SongsCatalog\data\images\releases\`
+## 🚀 Tech Stack
+
+* **Frontend**: HTML / JavaScript (Vite-based)
+* **Backend**: Rust
+* **Framework**: Tauri
+* **Package Manager**: npm
+
+---
+
+## 📦 Project Structure
+
+```
+TrackLog/
+│
+├── src/                 # Frontend source code
+├── src-tauri/          # Tauri (Rust backend)
+│   ├── src/            # Rust source
+│   ├── Cargo.toml
+│   └── tauri.conf.json
+│
+├── package.json
+├── package-lock.json
+└── .gitignore
+```
+
+---
+
+## ⚙️ Requirements
+
+Make sure the following are installed:
+
+* Node.js (LTS)
+* Rust (stable toolchain via rustup)
+* Visual Studio Build Tools (Windows)
+* WebView2 (usually already installed on Windows)
+
+---
+
+## 🛠️ Setup
+
+Clone the repository and install dependencies:
+
+```
+git clone https://github.com/YOUR_USERNAME/tracklog.git
+cd tracklog
+npm install
+```
+
+---
+
+## 🧪 Development
+
+Run the app in development mode:
+
+```
+npm run tauri dev
+```
+
+---
+
+## 🏗️ Build
+
+Create a production build:
+
+```
+npm run tauri build
+```
+
+The generated application will be available under:
+
+```
+src-tauri/target/release/
+```
+
+and installer bundles (if enabled) under:
+
+```
+src-tauri/target/release/bundle/
+```
+
+---
+
+## 📌 Current Status
+
+This is an early version of TrackLog.
+
+Features and structure are still evolving, and the focus is currently on:
+
+* Establishing the application foundation
+* Setting up Tauri integration
+* Preparing for future feature development
+
+---
+
+## 🧭 Roadmap (planned)
+
+* Song catalog management
+* Metadata editing and organization
+* Search and filtering capabilities
+* UI improvements
+* Data persistence enhancements
+
+---
+
+## 📄 License
+
+This project is currently private / not licensed for distribution.
+
+---
+
+## 👤 Author
+
+Stefano Mingoli
+
+---
