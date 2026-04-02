@@ -21,6 +21,8 @@ TrackLog currently supports:
 - filtering releases by type and status
 - searching tracks by internal code or title
 - uploading and managing release artwork locally
+- creating backup snapshots into a selected Google Drive folder
+- restoring local catalog data from a previously created Google Drive backup folder
 - showing dashboard summaries and recently updated items
 
 Tracks and releases are managed locally on the user’s machine. The current implementation is focused on speed, simplicity, and a clear desktop workflow rather than cloud sync or collaboration.
@@ -191,6 +193,12 @@ TrackLog/data/images/releases/
 The backend creates these directories automatically when needed. File names are sanitized and derived from the release internal code.
 
 On Windows, this is typically under the user’s Local AppData directory.
+
+### Google Drive backup and restore
+TrackLog now includes a **Google Drive Backup** panel on the Home screen.
+
+- **Backup**: choose your Google Drive desktop-sync folder and TrackLog creates a timestamped `tracklog-backup-*` folder containing your local data (`catalog.db` and managed images).
+- **Restore**: choose one of those backup folders to replace current local TrackLog data with that snapshot.
 
 ---
 

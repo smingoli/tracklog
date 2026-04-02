@@ -109,3 +109,13 @@ pub fn set_release_image(release_id: i64, source_path: String) -> Result<Release
 pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
     db::remove_release_image(release_id)
 }
+
+#[command]
+pub fn backup_to_google_drive_folder(folder_path: String) -> Result<String, String> {
+    db::backup_to_google_drive_folder(folder_path)
+}
+
+#[command]
+pub fn restore_from_google_drive_backup(backup_path: String) -> Result<(), String> {
+    db::restore_from_google_drive_backup(backup_path)
+}

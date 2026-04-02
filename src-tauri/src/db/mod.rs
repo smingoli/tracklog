@@ -3,7 +3,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::fs;
 use std::path::Path;
 
-use crate::fs::{allowed_image_extension, db_path, ensure_storage_dirs, managed_release_image_path};
+use crate::fs::{
+    allowed_image_extension, backup_data_to_directory, db_path, ensure_storage_dirs,
+    managed_release_image_path, restore_data_from_directory,
+};
 use crate::models::{
     DashboardSummary, Release, ReleaseInput, ReleaseTrackRow, Track, TrackInput, TrackListRow,
 };
@@ -648,6 +651,17 @@ pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
     )
     .map_err(|e| e.to_string())?;
     get_release_by_id(release_id)?.ok_or_else(|| "Could not read updated release".into())
+}
+
+pub fn backup_to_google_drive_folder(folder_path: String) -> Result<String, String> {
+    let backup_path = backup_data_to_directory(Path::new(&folder_path))?;
+    Ok(backup_path.to_string_lossy().into_owned())
+}
+
+pub fn restore_from_google_drive_backup(backup_path: String) -> Result<(), String> {
+    restore_data_from_directory(Path::new(&backup_path))?;
+    initialize_database()?;
+    Ok(())
 }
 
 pub fn get_dashboard_summary() -> Result<DashboardSummary, String> {

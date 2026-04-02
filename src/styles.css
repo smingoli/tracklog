@@ -115,6 +115,16 @@ textarea {
   resize: vertical;
 }
 .muted { color: #6b7280; font-size: 14px; }
+.success {
+  margin-top: 10px;
+  color: #166534;
+  font-size: 14px;
+}
+.error {
+  margin-top: 10px;
+  color: #b91c1c;
+  font-size: 14px;
+}
 .inline-list {
   display: grid;
   gap: 12px;
