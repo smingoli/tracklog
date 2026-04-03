@@ -24,6 +24,7 @@ TrackLog currently supports:
 - showing dashboard summaries and recently updated items
 - configuring backup location from Settings
 - creating zipped backups (database + images)
+- backup on exit can be enabled/disabled
 - restoring app data from a backup ZIP
 
 Tracks and releases are managed locally on the user’s machine. The current implementation is focused on speed, simplicity, and a clear desktop workflow rather than cloud sync or collaboration.
