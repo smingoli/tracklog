@@ -481,7 +481,7 @@ pub fn list_tracks_for_release(release_id: i64) -> Result<Vec<ReleaseTrackRow>, 
 }
 
 pub fn assign_track_to_release(track_id: i64, release_id: i64) -> Result<(), String> {
-    let mut conn = open_connection()?;
+    let conn = open_connection()?;
     // validate existence
     let track_exists: Option<i64> = conn
         .query_row(
@@ -539,7 +539,7 @@ pub fn assign_track_to_release(track_id: i64, release_id: i64) -> Result<(), Str
 }
 
 pub fn remove_track_from_release(track_id: i64, release_id: i64) -> Result<(), String> {
-    let mut conn = open_connection()?;
+    let conn = open_connection()?;
     let current_order: Option<i64> = conn
         .query_row(
             "SELECT track_order FROM release_tracks WHERE track_id = ?1 AND release_id = ?2",
@@ -576,7 +576,7 @@ pub fn move_track_down_in_release(track_id: i64, release_id: i64) -> Result<(), 
 }
 
 fn move_track_in_release(track_id: i64, release_id: i64, up: bool) -> Result<(), String> {
-    let mut conn = open_connection()?;
+    let conn = open_connection()?;
     let current_order: Option<i64> = conn
         .query_row(
             "SELECT track_order FROM release_tracks WHERE track_id = ?1 AND release_id = ?2",
