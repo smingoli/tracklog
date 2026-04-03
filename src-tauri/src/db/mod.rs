@@ -1,10 +1,23 @@
 use chrono::Utc;
+use base64::Engine;
+use once_cell::sync::Lazy;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tempfile::tempdir;
+use url::Url;
 
 use crate::fs::{
     allowed_image_extension, backup_archive_name, create_backup_zip_file, db_path,
@@ -31,6 +44,30 @@ struct DriveFileListResponse {
 struct DriveFile {
     id: String,
 }
+
+#[derive(Deserialize)]
+struct GoogleTokenResponse {
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_in: i64,
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredGoogleTokens {
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_at_unix: i64,
+}
+
+struct PendingOAuthFlow {
+    code_verifier: String,
+    redirect_uri: String,
+    code: Option<String>,
+    error: Option<String>,
+}
+
+static OAUTH_FLOWS: Lazy<Mutex<HashMap<String, Arc<Mutex<PendingOAuthFlow>>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub fn open_connection() -> Result<Connection, String> {
     ensure_storage_dirs()?;
@@ -672,11 +709,117 @@ pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
     get_release_by_id(release_id)?.ok_or_else(|| "Could not read updated release".into())
 }
 
-pub fn backup_to_google_drive(access_token: String, folder_id: Option<String>) -> Result<String, String> {
-    let token = access_token.trim();
-    if token.is_empty() {
-        return Err("Google Drive access token is required".into());
+pub fn start_google_drive_oauth(client_id: String) -> Result<String, String> {
+    let client_id = client_id.trim().to_string();
+    if client_id.is_empty() {
+        return Err("Google OAuth client ID is required".into());
     }
+
+    let state = random_string(32);
+    let code_verifier = random_string(96);
+    let code_challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(Sha256::digest(code_verifier.as_bytes()));
+
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let redirect_uri = format!("http://127.0.0.1:{}/callback", port);
+
+    let flow = Arc::new(Mutex::new(PendingOAuthFlow {
+        code_verifier,
+        redirect_uri: redirect_uri.clone(),
+        code: None,
+        error: None,
+    }));
+    OAUTH_FLOWS
+        .lock()
+        .map_err(|_| "Could not lock OAuth flow store")?
+        .insert(state.clone(), flow.clone());
+
+    spawn_loopback_listener(listener, state.clone(), flow);
+
+    let mut auth_url = Url::parse("https://accounts.google.com/o/oauth2/v2/auth")
+        .map_err(|e| e.to_string())?;
+    auth_url
+        .query_pairs_mut()
+        .append_pair("client_id", &client_id)
+        .append_pair("redirect_uri", &redirect_uri)
+        .append_pair("response_type", "code")
+        .append_pair("scope", "https://www.googleapis.com/auth/drive.file")
+        .append_pair("state", &state)
+        .append_pair("code_challenge", &code_challenge)
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("access_type", "offline")
+        .append_pair("prompt", "consent");
+
+    tauri::webbrowser::open(auth_url.as_str()).map_err(|e| e.to_string())?;
+    Ok(state)
+}
+
+pub fn complete_google_drive_oauth(client_id: String, state: String) -> Result<bool, String> {
+    let client_id = client_id.trim();
+    if client_id.is_empty() {
+        return Err("Google OAuth client ID is required".into());
+    }
+
+    let flow_arc = {
+        let flows = OAUTH_FLOWS
+            .lock()
+            .map_err(|_| "Could not lock OAuth flow store")?;
+        flows
+            .get(&state)
+            .cloned()
+            .ok_or("OAuth session not found. Start again.")?
+    };
+
+    let (code, verifier, redirect_uri, error) = {
+        let flow = flow_arc.lock().map_err(|_| "Could not read OAuth state")?;
+        (
+            flow.code.clone(),
+            flow.code_verifier.clone(),
+            flow.redirect_uri.clone(),
+            flow.error.clone(),
+        )
+    };
+
+    if let Some(err) = error {
+        remove_oauth_flow(&state)?;
+        return Err(err);
+    }
+    let Some(code) = code else {
+        return Ok(false);
+    };
+
+    let client = reqwest::blocking::Client::new();
+    let token_response = client
+        .post("https://oauth2.googleapis.com/token")
+        .form(&[
+            ("code", code.as_str()),
+            ("client_id", client_id),
+            ("code_verifier", verifier.as_str()),
+            ("redirect_uri", redirect_uri.as_str()),
+            ("grant_type", "authorization_code"),
+        ])
+        .send()
+        .map_err(|e| e.to_string())?;
+
+    if !token_response.status().is_success() {
+        let body = token_response.text().unwrap_or_else(|_| "".to_string());
+        remove_oauth_flow(&state)?;
+        return Err(format!("OAuth token exchange failed: {}", body));
+    }
+
+    let token_payload: GoogleTokenResponse = token_response.json().map_err(|e| e.to_string())?;
+    persist_google_tokens(&StoredGoogleTokens {
+        access_token: token_payload.access_token,
+        refresh_token: token_payload.refresh_token,
+        expires_at_unix: now_unix() + token_payload.expires_in,
+    })?;
+    remove_oauth_flow(&state)?;
+    Ok(true)
+}
+
+pub fn backup_to_google_drive(client_id: String, folder_id: Option<String>) -> Result<String, String> {
+    let token = get_valid_google_access_token(client_id)?;
 
     let tmp_dir = tempdir().map_err(|e| e.to_string())?;
     let backup_name = backup_archive_name();
@@ -722,11 +865,8 @@ pub fn backup_to_google_drive(access_token: String, folder_id: Option<String>) -
     Ok(format!("Uploaded backup as {} ({})", upload.name, upload.id))
 }
 
-pub fn restore_latest_from_google_drive(access_token: String, folder_id: Option<String>) -> Result<(), String> {
-    let token = access_token.trim();
-    if token.is_empty() {
-        return Err("Google Drive access token is required".into());
-    }
+pub fn restore_latest_from_google_drive(client_id: String, folder_id: Option<String>) -> Result<(), String> {
+    let token = get_valid_google_access_token(client_id)?;
 
     let mut query_parts = vec![
         "name contains 'tracklog-backup-'".to_string(),
@@ -788,6 +928,162 @@ pub fn restore_latest_from_google_drive(access_token: String, folder_id: Option<
     restore_data_from_backup_zip(Path::new(&archive_path))?;
     initialize_database()?;
     Ok(())
+}
+
+fn random_string(len: usize) -> String {
+    thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
+}
+
+fn spawn_loopback_listener(listener: TcpListener, expected_state: String, flow: Arc<Mutex<PendingOAuthFlow>>) {
+    thread::spawn(move || {
+        let _ = listener.set_nonblocking(true);
+        let start = SystemTime::now();
+        loop {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let mut buf = [0_u8; 4096];
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let path = req
+                        .lines()
+                        .next()
+                        .and_then(|line| line.split_whitespace().nth(1))
+                        .unwrap_or("/");
+                    let url = format!("http://localhost{}", path);
+
+                    let (mut code, mut error, mut state) = (None, None, None);
+                    if let Ok(parsed) = Url::parse(&url) {
+                        for (k, v) in parsed.query_pairs() {
+                            match k.as_ref() {
+                                "code" => code = Some(v.to_string()),
+                                "error" => error = Some(v.to_string()),
+                                "state" => state = Some(v.to_string()),
+                                _ => {}
+                            }
+                        }
+                    }
+
+                    if let Ok(mut data) = flow.lock() {
+                        if state.as_deref() != Some(expected_state.as_str()) {
+                            data.error = Some("OAuth state mismatch".to_string());
+                        } else if let Some(err) = error {
+                            data.error = Some(format!("OAuth authorization failed: {}", err));
+                        } else {
+                            data.code = code;
+                        }
+                    }
+
+                    let body = "TrackLog authorization complete. You can close this tab.";
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = stream.write_all(response.as_bytes());
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if start.elapsed().unwrap_or(Duration::from_secs(0)) > Duration::from_secs(300) {
+                        if let Ok(mut data) = flow.lock() {
+                            data.error = Some("OAuth timed out. Start again.".to_string());
+                        }
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(150));
+                }
+                Err(_) => {
+                    if let Ok(mut data) = flow.lock() {
+                        data.error = Some("Failed waiting for OAuth callback".to_string());
+                    }
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn remove_oauth_flow(state: &str) -> Result<(), String> {
+    OAUTH_FLOWS
+        .lock()
+        .map_err(|_| "Could not lock OAuth flow store".to_string())?
+        .remove(state);
+    Ok(())
+}
+
+fn google_tokens_path() -> Result<std::path::PathBuf, String> {
+    let mut path = crate::fs::data_dir()?;
+    path.push("google_drive_tokens.json");
+    Ok(path)
+}
+
+fn persist_google_tokens(tokens: &StoredGoogleTokens) -> Result<(), String> {
+    let path = google_tokens_path()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let payload = serde_json::to_vec_pretty(tokens).map_err(|e| e.to_string())?;
+    fs::write(path, payload).map_err(|e| e.to_string())
+}
+
+fn load_google_tokens() -> Result<StoredGoogleTokens, String> {
+    let path = google_tokens_path()?;
+    let raw = fs::read(path).map_err(|_| "Google Drive is not connected yet".to_string())?;
+    serde_json::from_slice(&raw).map_err(|e| e.to_string())
+}
+
+fn now_unix() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn get_valid_google_access_token(client_id: String) -> Result<String, String> {
+    let client_id = client_id.trim().to_string();
+    if client_id.is_empty() {
+        return Err("Google OAuth client ID is required".into());
+    }
+
+    let mut stored = load_google_tokens()?;
+    if stored.expires_at_unix > now_unix() + 60 {
+        return Ok(stored.access_token);
+    }
+
+    let refresh_token = stored
+        .refresh_token
+        .clone()
+        .ok_or("Access token expired and no refresh token is available. Reconnect Google Drive.")?;
+    let refreshed = refresh_google_access_token(&client_id, &refresh_token)?;
+    stored.access_token = refreshed.access_token;
+    stored.expires_at_unix = now_unix() + refreshed.expires_in;
+    if refreshed.refresh_token.is_some() {
+        stored.refresh_token = refreshed.refresh_token;
+    }
+    persist_google_tokens(&stored)?;
+    Ok(stored.access_token)
+}
+
+fn refresh_google_access_token(client_id: &str, refresh_token: &str) -> Result<GoogleTokenResponse, String> {
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post("https://oauth2.googleapis.com/token")
+        .form(&[
+            ("client_id", client_id),
+            ("refresh_token", refresh_token),
+            ("grant_type", "refresh_token"),
+        ])
+        .send()
+        .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let body = response.text().unwrap_or_else(|_| "".to_string());
+        return Err(format!("Failed to refresh Google access token: {}", body));
+    }
+    response.json().map_err(|e| e.to_string())
 }
 
 pub fn get_dashboard_summary() -> Result<DashboardSummary, String> {

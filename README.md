@@ -197,8 +197,10 @@ On Windows, this is typically under the user’s Local AppData directory.
 ### Google Drive backup and restore
 TrackLog now includes a **Google Drive Backup** panel on the Home screen.
 
-- **Backup**: provide a Google OAuth access token (and optional folder ID). TrackLog creates a zip archive of local data and uploads it to Google Drive.
-- **Restore**: using the same token/folder scope, TrackLog downloads the latest `tracklog-backup-*.zip` from Google Drive and replaces current local data with it.
+- **Connect**: provide a Google OAuth Desktop App Client ID and authorize in your system browser via Authorization Code + PKCE.
+- **Token handling**: TrackLog stores OAuth tokens locally, uses short-lived access tokens, and refreshes them automatically when possible using the refresh token.
+- **Backup**: creates a zip archive of local data and uploads it to Google Drive (optionally in a specific folder ID).
+- **Restore**: downloads the latest `tracklog-backup-*.zip` from Google Drive and replaces current local data with it.
 
 ---
 

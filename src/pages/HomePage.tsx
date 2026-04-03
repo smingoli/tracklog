@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   backupToGoogleDrive,
+  completeGoogleDriveOAuth,
   getDashboardSummary,
   initializeApp,
-  restoreLatestFromGoogleDrive
+  restoreLatestFromGoogleDrive,
+  startGoogleDriveOAuth
 } from "../services/tauri";
 import type { DashboardSummary } from "../types/models";
 
@@ -12,8 +14,10 @@ export function HomePage() {
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [accessToken, setAccessToken] = useState("");
+  const [clientId, setClientId] = useState("");
   const [folderId, setFolderId] = useState("");
+  const [oauthState, setOauthState] = useState("");
+  const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -28,11 +32,43 @@ export function HomePage() {
     setData(summary);
   }
 
+  async function handleConnectGoogleDrive() {
+    setMessage("");
+    setError("");
+    try {
+      const state = await startGoogleDriveOAuth(clientId);
+      setOauthState(state);
+      setConnecting(true);
+      setMessage("Browser opened for Google sign-in. Waiting for authorization...");
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  useEffect(() => {
+    if (!connecting || !oauthState) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const done = await completeGoogleDriveOAuth(clientId, oauthState);
+        if (done) {
+          setConnecting(false);
+          setOauthState("");
+          setMessage("Google Drive connected successfully.");
+        }
+      } catch (e) {
+        setConnecting(false);
+        setOauthState("");
+        setError(String(e));
+      }
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [clientId, connecting, oauthState]);
+
   async function handleBackupToGoogleDriveApi() {
     setMessage("");
     setError("");
     try {
-      const result = await backupToGoogleDrive(accessToken, folderId);
+      const result = await backupToGoogleDrive(clientId, folderId);
       setMessage(result);
     } catch (e) {
       setError(String(e));
@@ -48,7 +84,7 @@ export function HomePage() {
     if (!confirmed) return;
 
     try {
-      await restoreLatestFromGoogleDrive(accessToken, folderId);
+      await restoreLatestFromGoogleDrive(clientId, folderId);
       await refreshSummary();
       setMessage("Latest backup restored from Google Drive.");
     } catch (e) {
@@ -84,16 +120,15 @@ export function HomePage() {
       <div className="panel">
         <h3>Google Drive Backup</h3>
         <p className="muted">
-          Use Google Drive API directly (no desktop sync client required).
+          Uses Google OAuth authorization code flow with PKCE in your system browser.
         </p>
         <div className="form-grid">
           <div className="field full">
-            <label>Google OAuth Access Token</label>
+            <label>Google OAuth Client ID (Desktop App)</label>
             <input
-              type="password"
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              placeholder="ya29..."
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              placeholder="1234567890-abc.apps.googleusercontent.com"
             />
           </div>
           <div className="field full">
@@ -106,10 +141,13 @@ export function HomePage() {
           </div>
         </div>
         <div className="actions">
-          <button className="btn" type="button" onClick={handleBackupToGoogleDriveApi}>
+          <button className="btn secondary" type="button" onClick={handleConnectGoogleDrive} disabled={connecting}>
+            {connecting ? "Connecting..." : "Connect Google Drive"}
+          </button>
+          <button className="btn" type="button" onClick={handleBackupToGoogleDriveApi} disabled={!clientId.trim()}>
             Backup to Google Drive
           </button>
-          <button className="btn secondary" type="button" onClick={handleRestoreFromGoogleDriveApi}>
+          <button className="btn secondary" type="button" onClick={handleRestoreFromGoogleDriveApi} disabled={!clientId.trim()}>
             Restore Latest from Google Drive
           </button>
         </div>
