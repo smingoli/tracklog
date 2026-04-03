@@ -68,7 +68,7 @@ struct PendingOAuthFlow {
 
 static OAUTH_FLOWS: Lazy<Mutex<HashMap<String, Arc<Mutex<PendingOAuthFlow>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-const FALLBACK_GOOGLE_OAUTH_CLIENT_ID: &str = "1234567890-abc.apps.googleusercontent.com";
+const FALLBACK_GOOGLE_OAUTH_CLIENT_ID: &str = "407408718192.apps.googleusercontent.com";
 
 pub fn open_connection() -> Result<Connection, String> {
     ensure_storage_dirs()?;
