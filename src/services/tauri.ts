@@ -102,6 +102,14 @@ export async function setBackupLocation(path: string): Promise<string | null> {
   return invoke("set_backup_location", { path });
 }
 
+export async function getBackupOnExit(): Promise<boolean> {
+  return invoke("get_backup_on_exit");
+}
+
+export async function setBackupOnExit(enabled: boolean): Promise<boolean> {
+  return invoke("set_backup_on_exit", { enabled });
+}
+
 export async function createBackup(destinationDir: string): Promise<string> {
   return invoke("create_backup", { destinationDir });
 }
