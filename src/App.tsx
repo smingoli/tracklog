@@ -7,6 +7,7 @@ import { TracksPage } from "./pages/TracksPage";
 import { TrackDetailPage } from "./pages/TrackDetailPage";
 import { ReleasesPage } from "./pages/ReleasesPage";
 import { ReleaseDetailPage } from "./pages/ReleaseDetailPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 export default function App() {
   useEffect(() => {
@@ -28,6 +29,7 @@ export default function App() {
           <NavLink to="/">Home</NavLink>
           <NavLink to="/tracks">Tracks</NavLink>
           <NavLink to="/releases">Releases</NavLink>
+          <NavLink to="/settings">Settings</NavLink>
         </nav>
       </aside>
 
@@ -40,6 +42,7 @@ export default function App() {
           <Route path="/releases" element={<ReleasesPage />} />
           <Route path="/releases/new" element={<ReleaseDetailPage mode="create" />} />
           <Route path="/releases/:id" element={<ReleaseDetailPage mode="edit" />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
     </div>

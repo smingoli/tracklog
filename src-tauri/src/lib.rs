@@ -1,13 +1,15 @@
+mod backup;
 mod commands;
 mod db;
 mod fs;
 mod models;
 
 use commands::{
-    assign_track_to_release, create_release, create_track, delete_release, delete_track,
-    get_dashboard_summary, get_release_by_id, get_track_by_id, initialize_app, list_available_tracks,
-    list_releases, list_tracks, list_tracks_for_release, move_track_down_in_release,
-    move_track_up_in_release, remove_release_image, remove_track_from_release, search_tracks,
+    assign_track_to_release, create_backup, create_release, create_track, delete_release,
+    delete_track, get_backup_location, get_dashboard_summary, get_release_by_id, get_track_by_id,
+    initialize_app, list_available_tracks, list_releases, list_tracks, list_tracks_for_release,
+    move_track_down_in_release, move_track_up_in_release, remove_release_image,
+    remove_track_from_release, restore_backup, search_tracks, set_backup_location,
     set_release_image, update_release, update_track,
 };
 
@@ -36,7 +38,11 @@ pub fn run() {
             move_track_up_in_release,
             move_track_down_in_release,
             set_release_image,
-            remove_release_image
+            remove_release_image,
+            get_backup_location,
+            set_backup_location,
+            create_backup,
+            restore_backup
         ])
         .run(tauri::generate_context!())
         .expect("error while running SongsCatalog");

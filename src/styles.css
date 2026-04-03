@@ -157,3 +157,27 @@ textarea {
 .small-input {
   max-width: 220px;
 }
+
+
+.backup-row {
+  display: grid;
+  gap: 12px;
+}
+
+.status-success {
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+}
+
+.status-error {
+  color: #991b1b;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+}

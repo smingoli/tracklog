@@ -3,7 +3,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::fs;
 use std::path::Path;
 
-use crate::fs::{allowed_image_extension, db_path, ensure_storage_dirs, managed_release_image_path};
+use crate::fs::{
+    allowed_image_extension, db_path, ensure_storage_dirs, managed_release_image_path,
+};
 use crate::models::{
     DashboardSummary, Release, ReleaseInput, ReleaseTrackRow, Track, TrackInput, TrackListRow,
 };
@@ -75,7 +77,10 @@ fn now_iso() -> String {
 }
 
 fn trim_to_opt(value: &Option<String>) -> Option<String> {
-    value.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    value
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn validate_track_input(input: &TrackInput) -> Result<(), String> {
@@ -235,8 +240,9 @@ pub fn create_track(input: TrackInput) -> Result<Track, String> {
 pub fn update_track(id: i64, input: TrackInput) -> Result<Track, String> {
     validate_track_input(&input)?;
     let conn = open_connection()?;
-    let updated = conn.execute(
-        "UPDATE tracks
+    let updated = conn
+        .execute(
+            "UPDATE tracks
          SET internal_code = ?1,
              title = ?2,
              status = ?3,
@@ -247,25 +253,28 @@ pub fn update_track(id: i64, input: TrackInput) -> Result<Track, String> {
              musical_key = ?8,
              updated_at = ?9
          WHERE id = ?10",
-        params![
-            input.internal_code.trim(),
-            input.title.trim(),
-            input.status,
-            trim_to_opt(&input.description),
-            trim_to_opt(&input.lyrics),
-            trim_to_opt(&input.notes),
-            input.bpm,
-            trim_to_opt(&input.key),
-            now_iso(),
-            id,
-        ],
-    ).map_err(|e| {
-        if e.to_string().contains("UNIQUE constraint failed: tracks.internal_code") {
-            "Track Internal Code must be unique".to_string()
-        } else {
-            e.to_string()
-        }
-    })?;
+            params![
+                input.internal_code.trim(),
+                input.title.trim(),
+                input.status,
+                trim_to_opt(&input.description),
+                trim_to_opt(&input.lyrics),
+                trim_to_opt(&input.notes),
+                input.bpm,
+                trim_to_opt(&input.key),
+                now_iso(),
+                id,
+            ],
+        )
+        .map_err(|e| {
+            if e.to_string()
+                .contains("UNIQUE constraint failed: tracks.internal_code")
+            {
+                "Track Internal Code must be unique".to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
 
     if updated == 0 {
         return Err("Track not found".into());
@@ -390,8 +399,9 @@ pub fn create_release(input: ReleaseInput) -> Result<Release, String> {
 pub fn update_release(id: i64, input: ReleaseInput) -> Result<Release, String> {
     validate_release_input(&input)?;
     let conn = open_connection()?;
-    let updated = conn.execute(
-        "UPDATE releases
+    let updated = conn
+        .execute(
+            "UPDATE releases
          SET internal_code = ?1,
              title = ?2,
              type = ?3,
@@ -400,23 +410,26 @@ pub fn update_release(id: i64, input: ReleaseInput) -> Result<Release, String> {
              image_path = ?6,
              updated_at = ?7
          WHERE id = ?8",
-        params![
-            input.internal_code.trim(),
-            input.title.trim(),
-            input.r#type,
-            input.status,
-            trim_to_opt(&input.description),
-            trim_to_opt(&input.image_path),
-            now_iso(),
-            id,
-        ],
-    ).map_err(|e| {
-        if e.to_string().contains("UNIQUE constraint failed: releases.internal_code") {
-            "Release Internal Code must be unique".to_string()
-        } else {
-            e.to_string()
-        }
-    })?;
+            params![
+                input.internal_code.trim(),
+                input.title.trim(),
+                input.r#type,
+                input.status,
+                trim_to_opt(&input.description),
+                trim_to_opt(&input.image_path),
+                now_iso(),
+                id,
+            ],
+        )
+        .map_err(|e| {
+            if e.to_string()
+                .contains("UNIQUE constraint failed: releases.internal_code")
+            {
+                "Release Internal Code must be unique".to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
 
     if updated == 0 {
         return Err("Release not found".into());
@@ -471,7 +484,11 @@ pub fn assign_track_to_release(track_id: i64, release_id: i64) -> Result<(), Str
     let mut conn = open_connection()?;
     // validate existence
     let track_exists: Option<i64> = conn
-        .query_row("SELECT id FROM tracks WHERE id = ?1", params![track_id], |row| row.get(0))
+        .query_row(
+            "SELECT id FROM tracks WHERE id = ?1",
+            params![track_id],
+            |row| row.get(0),
+        )
         .optional()
         .map_err(|e| e.to_string())?;
     if track_exists.is_none() {
@@ -479,7 +496,11 @@ pub fn assign_track_to_release(track_id: i64, release_id: i64) -> Result<(), Str
     }
 
     let release_exists: Option<i64> = conn
-        .query_row("SELECT id FROM releases WHERE id = ?1", params![release_id], |row| row.get(0))
+        .query_row(
+            "SELECT id FROM releases WHERE id = ?1",
+            params![release_id],
+            |row| row.get(0),
+        )
         .optional()
         .map_err(|e| e.to_string())?;
     if release_exists.is_none() {
@@ -565,7 +586,11 @@ fn move_track_in_release(track_id: i64, release_id: i64, up: bool) -> Result<(),
         .optional()
         .map_err(|e| e.to_string())?;
     let current_order = current_order.ok_or("Track is not assigned to this release")?;
-    let target_order = if up { current_order - 1 } else { current_order + 1 };
+    let target_order = if up {
+        current_order - 1
+    } else {
+        current_order + 1
+    };
     if target_order <= 0 {
         return Ok(());
     }
@@ -669,25 +694,25 @@ pub fn get_dashboard_summary() -> Result<DashboardSummary, String> {
         .query_row("SELECT COUNT(*) FROM releases", [], |row| row.get(0))
         .map_err(|e| e.to_string())?;
 
-let recent_tracks = {
-    let mut stmt = conn
+    let recent_tracks = {
+        let mut stmt = conn
         .prepare(
             "SELECT id, internal_code, title, status, description, lyrics, notes, bpm, musical_key, created_at, updated_at
              FROM tracks ORDER BY updated_at DESC, id DESC LIMIT 5",
         )
         .map_err(|e| e.to_string())?;
 
-    let rows = stmt
-        .query_map([], map_track)
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], map_track)
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
 
-    rows
-};
+        rows
+    };
 
-let recent_releases = {
-    let mut stmt = conn
+    let recent_releases = {
+        let mut stmt = conn
         .prepare(
             "SELECT r.id, r.internal_code, r.title, r.type, r.status, r.description, r.image_path,
                     COUNT(rt.id) AS track_count, r.created_at, r.updated_at
@@ -699,14 +724,14 @@ let recent_releases = {
         )
         .map_err(|e| e.to_string())?;
 
-    let rows = stmt
-        .query_map([], map_release)
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], map_release)
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
 
-    rows
-};
+        rows
+    };
 
     Ok(DashboardSummary {
         total_tracks,
