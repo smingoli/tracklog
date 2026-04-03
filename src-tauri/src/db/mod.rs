@@ -527,7 +527,7 @@ pub fn list_tracks_for_release(release_id: i64) -> Result<Vec<ReleaseTrackRow>, 
 }
 
 pub fn assign_track_to_release(track_id: i64, release_id: i64) -> Result<(), String> {
-    let mut conn = open_connection()?;
+    let conn = open_connection()?;
     // validate existence
     let track_exists: Option<i64> = conn
         .query_row("SELECT id FROM tracks WHERE id = ?1", params![track_id], |row| row.get(0))
@@ -577,7 +577,7 @@ pub fn assign_track_to_release(track_id: i64, release_id: i64) -> Result<(), Str
 }
 
 pub fn remove_track_from_release(track_id: i64, release_id: i64) -> Result<(), String> {
-    let mut conn = open_connection()?;
+    let conn = open_connection()?;
     let current_order: Option<i64> = conn
         .query_row(
             "SELECT track_order FROM release_tracks WHERE track_id = ?1 AND release_id = ?2",
@@ -614,7 +614,7 @@ pub fn move_track_down_in_release(track_id: i64, release_id: i64) -> Result<(), 
 }
 
 fn move_track_in_release(track_id: i64, release_id: i64, up: bool) -> Result<(), String> {
-    let mut conn = open_connection()?;
+    let conn = open_connection()?;
     let current_order: Option<i64> = conn
         .query_row(
             "SELECT track_order FROM release_tracks WHERE track_id = ?1 AND release_id = ?2",
@@ -751,7 +751,7 @@ pub fn start_google_drive_oauth(client_id: String) -> Result<String, String> {
         .append_pair("access_type", "offline")
         .append_pair("prompt", "consent");
 
-    tauri::webbrowser::open(auth_url.as_str()).map_err(|e| e.to_string())?;
+    webbrowser::open(auth_url.as_str()).map_err(|e| e.to_string())?;
     Ok(state)
 }
 
@@ -851,7 +851,7 @@ pub fn backup_to_google_drive(client_id: String, folder_id: Option<String>) -> R
     let client = reqwest::blocking::Client::new();
     let response = client
         .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name")
-        .bearer_auth(token)
+        .bearer_auth(&token)
         .multipart(form)
         .send()
         .map_err(|e| e.to_string())?;
@@ -884,7 +884,7 @@ pub fn restore_latest_from_google_drive(client_id: String, folder_id: Option<Str
     let client = reqwest::blocking::Client::new();
     let list_response = client
         .get("https://www.googleapis.com/drive/v3/files")
-        .bearer_auth(token)
+        .bearer_auth(&token)
         .query(&[
             ("q", query.as_str()),
             ("orderBy", "createdTime desc"),
@@ -911,7 +911,7 @@ pub fn restore_latest_from_google_drive(client_id: String, folder_id: Option<Str
     );
     let download_response = client
         .get(download_url)
-        .bearer_auth(token)
+        .bearer_auth(&token)
         .send()
         .map_err(|e| e.to_string())?;
 
