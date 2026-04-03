@@ -68,7 +68,12 @@ struct PendingOAuthFlow {
 
 static OAUTH_FLOWS: Lazy<Mutex<HashMap<String, Arc<Mutex<PendingOAuthFlow>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-const FALLBACK_GOOGLE_OAUTH_CLIENT_ID: &str = "407408718192.apps.googleusercontent.com";
+const DEFAULT_GOOGLE_OAUTH_REDIRECT_URI: &str = "http://127.0.0.1:8976/callback";
+
+struct GoogleOAuthSettings {
+    client_id: String,
+    redirect_uri: String,
+}
 
 pub fn open_connection() -> Result<Connection, String> {
     ensure_storage_dirs()?;
@@ -711,16 +716,25 @@ pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
 }
 
 pub fn start_google_drive_oauth() -> Result<String, String> {
-    let client_id = google_oauth_client_id()?;
+    let settings = google_oauth_settings()?;
 
     let state = random_string(32);
     let code_verifier = random_string(96);
     let code_challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .encode(Sha256::digest(code_verifier.as_bytes()));
 
-    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
-    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-    let redirect_uri = format!("http://127.0.0.1:{}/callback", port);
+    let redirect_uri = settings.redirect_uri.clone();
+    let redirect = Url::parse(&redirect_uri).map_err(|e| e.to_string())?;
+    let host = redirect
+        .host_str()
+        .ok_or("OAuth redirect URI must include host")?;
+    let port = redirect
+        .port_or_known_default()
+        .ok_or("OAuth redirect URI must include port")?;
+    if redirect.scheme() != "http" || !(host == "127.0.0.1" || host == "localhost") {
+        return Err("OAuth redirect URI must use http://127.0.0.1:<port>/... or http://localhost:<port>/...".into());
+    }
+    let listener = TcpListener::bind(format!("{}:{}", host, port)).map_err(|e| e.to_string())?;
 
     let flow = Arc::new(Mutex::new(PendingOAuthFlow {
         code_verifier,
@@ -739,7 +753,7 @@ pub fn start_google_drive_oauth() -> Result<String, String> {
         .map_err(|e| e.to_string())?;
     auth_url
         .query_pairs_mut()
-        .append_pair("client_id", &client_id)
+        .append_pair("client_id", &settings.client_id)
         .append_pair("redirect_uri", &redirect_uri)
         .append_pair("response_type", "code")
         .append_pair("scope", "https://www.googleapis.com/auth/drive.file")
@@ -754,7 +768,7 @@ pub fn start_google_drive_oauth() -> Result<String, String> {
 }
 
 pub fn complete_google_drive_oauth(state: String) -> Result<bool, String> {
-    let client_id = google_oauth_client_id()?;
+    let settings = google_oauth_settings()?;
 
     let flow_arc = {
         let flows = OAUTH_FLOWS
@@ -789,7 +803,7 @@ pub fn complete_google_drive_oauth(state: String) -> Result<bool, String> {
         .post("https://oauth2.googleapis.com/token")
         .form(&[
             ("code", code.as_str()),
-            ("client_id", client_id.as_str()),
+            ("client_id", settings.client_id.as_str()),
             ("code_verifier", verifier.as_str()),
             ("redirect_uri", redirect_uri.as_str()),
             ("grant_type", "authorization_code"),
@@ -1038,7 +1052,7 @@ fn now_unix() -> i64 {
 }
 
 fn get_valid_google_access_token() -> Result<String, String> {
-    let client_id = google_oauth_client_id()?;
+    let settings = google_oauth_settings()?;
 
     let mut stored = load_google_tokens()?;
     if stored.expires_at_unix > now_unix() + 60 {
@@ -1049,7 +1063,7 @@ fn get_valid_google_access_token() -> Result<String, String> {
         .refresh_token
         .clone()
         .ok_or("Access token expired and no refresh token is available. Reconnect Google Drive.")?;
-    let refreshed = refresh_google_access_token(client_id.as_str(), &refresh_token)?;
+    let refreshed = refresh_google_access_token(settings.client_id.as_str(), &refresh_token)?;
     stored.access_token = refreshed.access_token;
     stored.expires_at_unix = now_unix() + refreshed.expires_in;
     if refreshed.refresh_token.is_some() {
@@ -1078,22 +1092,43 @@ fn refresh_google_access_token(client_id: &str, refresh_token: &str) -> Result<G
     response.json().map_err(|e| e.to_string())
 }
 
-fn google_oauth_client_id() -> Result<String, String> {
-    if let Ok(value) = std::env::var("TRACKLOG_GOOGLE_OAUTH_CLIENT_ID") {
+fn google_oauth_settings() -> Result<GoogleOAuthSettings, String> {
+    let client_id = if let Ok(value) = std::env::var("TRACKLOG_GOOGLE_OAUTH_CLIENT_ID") {
         let trimmed = value.trim().to_string();
-        if !trimmed.is_empty() {
-            return Ok(trimmed);
+        if trimmed.is_empty() {
+            return Err("TRACKLOG_GOOGLE_OAUTH_CLIENT_ID is set but empty.".into());
         }
-    }
-
-    if let Some(value) = option_env!("TRACKLOG_GOOGLE_OAUTH_CLIENT_ID") {
+        trimmed
+    } else if let Some(value) = option_env!("TRACKLOG_GOOGLE_OAUTH_CLIENT_ID") {
         let trimmed = value.trim().to_string();
-        if !trimmed.is_empty() {
-            return Ok(trimmed);
+        if trimmed.is_empty() {
+            return Err("TRACKLOG_GOOGLE_OAUTH_CLIENT_ID is empty at build time.".into());
         }
-    }
+        trimmed
+    } else {
+        return Err("Google OAuth client ID is not configured. Set TRACKLOG_GOOGLE_OAUTH_CLIENT_ID.".into());
+    };
 
-    Ok(FALLBACK_GOOGLE_OAUTH_CLIENT_ID.to_string())
+    let redirect_uri = if let Ok(value) = std::env::var("TRACKLOG_GOOGLE_OAUTH_REDIRECT_URI") {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err("TRACKLOG_GOOGLE_OAUTH_REDIRECT_URI is set but empty.".into());
+        }
+        trimmed
+    } else if let Some(value) = option_env!("TRACKLOG_GOOGLE_OAUTH_REDIRECT_URI") {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err("TRACKLOG_GOOGLE_OAUTH_REDIRECT_URI is empty at build time.".into());
+        }
+        trimmed
+    } else {
+        DEFAULT_GOOGLE_OAUTH_REDIRECT_URI.to_string()
+    };
+
+    Ok(GoogleOAuthSettings {
+        client_id,
+        redirect_uri,
+    })
 }
 
 pub fn get_dashboard_summary() -> Result<DashboardSummary, String> {
