@@ -54,6 +54,5 @@ pub fn run() {
                     eprintln!("backup on exit failed: {err}");
                 }
             }
-        })
-        .expect("error while running SongsCatalog");
+        });
 }
