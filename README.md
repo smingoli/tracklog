@@ -22,6 +22,9 @@ TrackLog currently supports:
 - searching tracks by internal code or title
 - uploading and managing release artwork locally
 - showing dashboard summaries and recently updated items
+- configuring backup location from Settings
+- creating zipped backups (database + images)
+- restoring app data from a backup ZIP
 
 Tracks and releases are managed locally on the user’s machine. The current implementation is focused on speed, simplicity, and a clear desktop workflow rather than cloud sync or collaboration.
 
@@ -42,7 +45,7 @@ Tracks and releases are managed locally on the user’s machine. The current imp
 ### Backend
 - Rust
 - SQLite via `rusqlite`
-- `serde`, `chrono`, `dirs`
+- `serde`, `chrono`, `dirs`, `walkdir`, `zip`
 
 Dependencies and build scripts are defined in `package.json` and `src-tauri/Cargo.toml`.
 
@@ -147,6 +150,19 @@ In edit mode, users can:
 
 Artwork is previewed through Tauri file handling and stored in TrackLog-managed local storage.
 
+
+### Settings
+The settings page currently includes a **Backup** section for local data protection.
+
+Users can:
+- choose a backup destination folder using the native system folder picker
+- create a timestamped ZIP backup of app data
+- restore app data from a selected ZIP backup
+
+Backups include both:
+- the SQLite database (`catalog.db`)
+- managed release artwork files under `data/images/releases/`
+
 ---
 
 ## Data Model
@@ -192,6 +208,16 @@ The backend creates these directories automatically when needed. File names are 
 
 On Windows, this is typically under the user’s Local AppData directory.
 
+### App settings
+TrackLog also stores app-level settings (such as selected backup location) in:
+
+```text
+TrackLog/settings.json
+```
+
+### Backup archives
+When a backup is created from Settings, TrackLog writes a ZIP file with a timestamped name (for example `tracklog-backup-YYYYMMDD-HHMMSS.zip`) to the selected backup folder.
+
 ---
 
 ## Database Schema
@@ -229,6 +255,9 @@ The frontend uses Tauri commands for all data access and mutations. Current comm
 - move tracks within a release
 - set or remove release images
 - get dashboard summary
+- get/set backup location
+- create zipped backup
+- restore from backup ZIP
 
 The command registration is defined in `src-tauri/src/lib.rs`, with thin forwarding logic in `src-tauri/src/commands.rs`.
 
