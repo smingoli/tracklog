@@ -37,19 +37,30 @@ pub fn ensure_storage_dirs() -> Result<(), String> {
 }
 
 pub fn allowed_image_extension(path: &Path) -> bool {
-    match path.extension().and_then(OsStr::to_str).map(|s| s.to_lowercase()) {
+    match path
+        .extension()
+        .and_then(OsStr::to_str)
+        .map(|s| s.to_lowercase())
+    {
         Some(ext) if matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp") => true,
         _ => false,
     }
 }
 
-pub fn managed_release_image_path(release_internal_code: &str, source: &Path) -> Result<PathBuf, String> {
+pub fn managed_release_image_path(
+    release_internal_code: &str,
+    source: &Path,
+) -> Result<PathBuf, String> {
     let ext = source
         .extension()
         .and_then(OsStr::to_str)
         .ok_or("Image file has no valid extension")?;
     let mut dst = releases_image_dir()?;
-    dst.push(format!("{}.{}", sanitize_filename(release_internal_code), ext.to_lowercase()));
+    dst.push(format!(
+        "{}.{}",
+        sanitize_filename(release_internal_code),
+        ext.to_lowercase()
+    ));
     Ok(dst)
 }
 

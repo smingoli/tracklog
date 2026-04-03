@@ -92,3 +92,20 @@ export async function setReleaseImage(releaseId: number, sourcePath: string): Pr
 export async function removeReleaseImage(releaseId: number): Promise<Release> {
   return invoke("remove_release_image", { releaseId });
 }
+
+
+export async function getBackupLocation(): Promise<string | null> {
+  return invoke("get_backup_location");
+}
+
+export async function setBackupLocation(path: string): Promise<string | null> {
+  return invoke("set_backup_location", { path });
+}
+
+export async function createBackup(destinationDir: string): Promise<string> {
+  return invoke("create_backup", { destinationDir });
+}
+
+export async function restoreBackup(backupZipPath: string): Promise<void> {
+  await invoke("restore_backup", { backupZipPath });
+}

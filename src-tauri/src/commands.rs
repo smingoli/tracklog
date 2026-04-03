@@ -1,5 +1,6 @@
 use tauri::command;
 
+use crate::backup;
 use crate::db;
 use crate::models::{
     DashboardSummary, Release, ReleaseInput, ReleaseTrackRow, Track, TrackInput, TrackListRow,
@@ -108,4 +109,24 @@ pub fn set_release_image(release_id: i64, source_path: String) -> Result<Release
 #[command]
 pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
     db::remove_release_image(release_id)
+}
+
+#[command]
+pub fn get_backup_location() -> Result<Option<String>, String> {
+    backup::get_backup_location()
+}
+
+#[command]
+pub fn set_backup_location(path: String) -> Result<Option<String>, String> {
+    backup::set_backup_location(path)
+}
+
+#[command]
+pub fn create_backup(destination_dir: String) -> Result<String, String> {
+    backup::create_backup(destination_dir)
+}
+
+#[command]
+pub fn restore_backup(backup_zip_path: String) -> Result<(), String> {
+    backup::restore_backup(backup_zip_path)
 }
