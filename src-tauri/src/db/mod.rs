@@ -69,6 +69,7 @@ struct PendingOAuthFlow {
 static OAUTH_FLOWS: Lazy<Mutex<HashMap<String, Arc<Mutex<PendingOAuthFlow>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 const DEFAULT_GOOGLE_OAUTH_REDIRECT_URI: &str = "http://127.0.0.1:8976/callback";
+const FALLBACK_GOOGLE_OAUTH_CLIENT_ID: &str = "407408718192.apps.googleusercontent.com";
 
 struct GoogleOAuthSettings {
     client_id: String,
@@ -1106,7 +1107,7 @@ fn google_oauth_settings() -> Result<GoogleOAuthSettings, String> {
         }
         trimmed
     } else {
-        return Err("Google OAuth client ID is not configured. Set TRACKLOG_GOOGLE_OAUTH_CLIENT_ID.".into());
+        FALLBACK_GOOGLE_OAUTH_CLIENT_ID.to_string()
     };
 
     let redirect_uri = if let Ok(value) = std::env::var("TRACKLOG_GOOGLE_OAUTH_REDIRECT_URI") {
