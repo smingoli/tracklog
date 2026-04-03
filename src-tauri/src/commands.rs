@@ -111,21 +111,21 @@ pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
 }
 
 #[command]
-pub fn start_google_drive_oauth(client_id: String) -> Result<String, String> {
-    db::start_google_drive_oauth(client_id)
+pub fn start_google_drive_oauth() -> Result<String, String> {
+    db::start_google_drive_oauth()
 }
 
 #[command]
-pub fn complete_google_drive_oauth(client_id: String, state: String) -> Result<bool, String> {
-    db::complete_google_drive_oauth(client_id, state)
+pub fn complete_google_drive_oauth(state: String) -> Result<bool, String> {
+    db::complete_google_drive_oauth(state)
 }
 
 #[command]
-pub fn backup_to_google_drive(client_id: String, folder_id: Option<String>) -> Result<String, String> {
-    db::backup_to_google_drive(client_id, folder_id)
+pub fn backup_to_google_drive(folder_id: Option<String>) -> Result<String, String> {
+    db::backup_to_google_drive(folder_id)
 }
 
 #[command]
-pub fn restore_latest_from_google_drive(client_id: String, folder_id: Option<String>) -> Result<(), String> {
-    db::restore_latest_from_google_drive(client_id, folder_id)
+pub fn restore_latest_from_google_drive(folder_id: Option<String>) -> Result<(), String> {
+    db::restore_latest_from_google_drive(folder_id)
 }

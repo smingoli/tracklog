@@ -14,7 +14,6 @@ export function HomePage() {
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [clientId, setClientId] = useState("");
   const [folderId, setFolderId] = useState("");
   const [oauthState, setOauthState] = useState("");
   const [connecting, setConnecting] = useState(false);
@@ -36,7 +35,7 @@ export function HomePage() {
     setMessage("");
     setError("");
     try {
-      const state = await startGoogleDriveOAuth(clientId);
+      const state = await startGoogleDriveOAuth();
       setOauthState(state);
       setConnecting(true);
       setMessage("Browser opened for Google sign-in. Waiting for authorization...");
@@ -49,7 +48,7 @@ export function HomePage() {
     if (!connecting || !oauthState) return;
     const timer = window.setInterval(async () => {
       try {
-        const done = await completeGoogleDriveOAuth(clientId, oauthState);
+        const done = await completeGoogleDriveOAuth(oauthState);
         if (done) {
           setConnecting(false);
           setOauthState("");
@@ -62,13 +61,13 @@ export function HomePage() {
       }
     }, 1500);
     return () => window.clearInterval(timer);
-  }, [clientId, connecting, oauthState]);
+  }, [connecting, oauthState]);
 
   async function handleBackupToGoogleDriveApi() {
     setMessage("");
     setError("");
     try {
-      const result = await backupToGoogleDrive(clientId, folderId);
+      const result = await backupToGoogleDrive(folderId);
       setMessage(result);
     } catch (e) {
       setError(String(e));
@@ -84,7 +83,7 @@ export function HomePage() {
     if (!confirmed) return;
 
     try {
-      await restoreLatestFromGoogleDrive(clientId, folderId);
+      await restoreLatestFromGoogleDrive(folderId);
       await refreshSummary();
       setMessage("Latest backup restored from Google Drive.");
     } catch (e) {
@@ -124,14 +123,6 @@ export function HomePage() {
         </p>
         <div className="form-grid">
           <div className="field full">
-            <label>Google OAuth Client ID (Desktop App)</label>
-            <input
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="1234567890-abc.apps.googleusercontent.com"
-            />
-          </div>
-          <div className="field full">
             <label>Google Drive Folder ID (Optional)</label>
             <input
               value={folderId}
@@ -144,10 +135,10 @@ export function HomePage() {
           <button className="btn secondary" type="button" onClick={handleConnectGoogleDrive} disabled={connecting}>
             {connecting ? "Connecting..." : "Connect Google Drive"}
           </button>
-          <button className="btn" type="button" onClick={handleBackupToGoogleDriveApi} disabled={!clientId.trim()}>
+          <button className="btn" type="button" onClick={handleBackupToGoogleDriveApi}>
             Backup to Google Drive
           </button>
-          <button className="btn secondary" type="button" onClick={handleRestoreFromGoogleDriveApi} disabled={!clientId.trim()}>
+          <button className="btn secondary" type="button" onClick={handleRestoreFromGoogleDriveApi}>
             Restore Latest from Google Drive
           </button>
         </div>

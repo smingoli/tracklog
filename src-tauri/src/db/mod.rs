@@ -709,11 +709,8 @@ pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
     get_release_by_id(release_id)?.ok_or_else(|| "Could not read updated release".into())
 }
 
-pub fn start_google_drive_oauth(client_id: String) -> Result<String, String> {
-    let client_id = client_id.trim().to_string();
-    if client_id.is_empty() {
-        return Err("Google OAuth client ID is required".into());
-    }
+pub fn start_google_drive_oauth() -> Result<String, String> {
+    let client_id = google_oauth_client_id()?;
 
     let state = random_string(32);
     let code_verifier = random_string(96);
@@ -755,11 +752,8 @@ pub fn start_google_drive_oauth(client_id: String) -> Result<String, String> {
     Ok(state)
 }
 
-pub fn complete_google_drive_oauth(client_id: String, state: String) -> Result<bool, String> {
-    let client_id = client_id.trim();
-    if client_id.is_empty() {
-        return Err("Google OAuth client ID is required".into());
-    }
+pub fn complete_google_drive_oauth(state: String) -> Result<bool, String> {
+    let client_id = google_oauth_client_id()?;
 
     let flow_arc = {
         let flows = OAUTH_FLOWS
@@ -794,7 +788,7 @@ pub fn complete_google_drive_oauth(client_id: String, state: String) -> Result<b
         .post("https://oauth2.googleapis.com/token")
         .form(&[
             ("code", code.as_str()),
-            ("client_id", client_id),
+            ("client_id", client_id.as_str()),
             ("code_verifier", verifier.as_str()),
             ("redirect_uri", redirect_uri.as_str()),
             ("grant_type", "authorization_code"),
@@ -818,8 +812,8 @@ pub fn complete_google_drive_oauth(client_id: String, state: String) -> Result<b
     Ok(true)
 }
 
-pub fn backup_to_google_drive(client_id: String, folder_id: Option<String>) -> Result<String, String> {
-    let token = get_valid_google_access_token(client_id)?;
+pub fn backup_to_google_drive(folder_id: Option<String>) -> Result<String, String> {
+    let token = get_valid_google_access_token()?;
 
     let tmp_dir = tempdir().map_err(|e| e.to_string())?;
     let backup_name = backup_archive_name();
@@ -865,8 +859,8 @@ pub fn backup_to_google_drive(client_id: String, folder_id: Option<String>) -> R
     Ok(format!("Uploaded backup as {} ({})", upload.name, upload.id))
 }
 
-pub fn restore_latest_from_google_drive(client_id: String, folder_id: Option<String>) -> Result<(), String> {
-    let token = get_valid_google_access_token(client_id)?;
+pub fn restore_latest_from_google_drive(folder_id: Option<String>) -> Result<(), String> {
+    let token = get_valid_google_access_token()?;
 
     let mut query_parts = vec![
         "name contains 'tracklog-backup-'".to_string(),
@@ -1042,11 +1036,8 @@ fn now_unix() -> i64 {
         .unwrap_or(0)
 }
 
-fn get_valid_google_access_token(client_id: String) -> Result<String, String> {
-    let client_id = client_id.trim().to_string();
-    if client_id.is_empty() {
-        return Err("Google OAuth client ID is required".into());
-    }
+fn get_valid_google_access_token() -> Result<String, String> {
+    let client_id = google_oauth_client_id()?;
 
     let mut stored = load_google_tokens()?;
     if stored.expires_at_unix > now_unix() + 60 {
@@ -1057,7 +1048,7 @@ fn get_valid_google_access_token(client_id: String) -> Result<String, String> {
         .refresh_token
         .clone()
         .ok_or("Access token expired and no refresh token is available. Reconnect Google Drive.")?;
-    let refreshed = refresh_google_access_token(&client_id, &refresh_token)?;
+    let refreshed = refresh_google_access_token(client_id.as_str(), &refresh_token)?;
     stored.access_token = refreshed.access_token;
     stored.expires_at_unix = now_unix() + refreshed.expires_in;
     if refreshed.refresh_token.is_some() {
@@ -1084,6 +1075,24 @@ fn refresh_google_access_token(client_id: &str, refresh_token: &str) -> Result<G
         return Err(format!("Failed to refresh Google access token: {}", body));
     }
     response.json().map_err(|e| e.to_string())
+}
+
+fn google_oauth_client_id() -> Result<String, String> {
+    if let Ok(value) = std::env::var("TRACKLOG_GOOGLE_OAUTH_CLIENT_ID") {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            return Ok(trimmed);
+        }
+    }
+
+    if let Some(value) = option_env!("TRACKLOG_GOOGLE_OAUTH_CLIENT_ID") {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            return Ok(trimmed);
+        }
+    }
+
+    Err("Google OAuth client ID is not configured. Set TRACKLOG_GOOGLE_OAUTH_CLIENT_ID for the app.".into())
 }
 
 pub fn get_dashboard_summary() -> Result<DashboardSummary, String> {
