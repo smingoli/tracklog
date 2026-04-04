@@ -1,6 +1,6 @@
 [package]
 name = "TrackLog"
-version = "0.1.1"
+version = "0.1.2"
 description = "Songs catalog desktop app"
 authors = ["OpenAI"]
 edition = "2021"

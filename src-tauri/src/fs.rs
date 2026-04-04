@@ -75,3 +75,7 @@ pub fn sanitize_filename(name: &str) -> String {
         })
         .collect()
 }
+
+pub fn write_text_file(path: &str, contents: &str) -> Result<(), String> {
+    fs::write(path, contents).map_err(|e| e.to_string())
+}

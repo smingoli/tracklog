@@ -93,6 +93,10 @@ export async function removeReleaseImage(releaseId: number): Promise<Release> {
   return invoke("remove_release_image", { releaseId });
 }
 
+export async function writeTextFile(path: string, contents: string): Promise<void> {
+  await invoke("write_text_file", { path, contents });
+}
+
 
 export async function getBackupLocation(): Promise<string | null> {
   return invoke("get_backup_location");

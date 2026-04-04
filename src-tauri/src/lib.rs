@@ -11,6 +11,7 @@ use commands::{
     list_tracks_for_release, move_track_down_in_release, move_track_up_in_release,
     remove_release_image, remove_track_from_release, restore_backup, search_tracks,
     set_backup_location, set_backup_on_exit, set_release_image, update_release, update_track,
+    write_text_file,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -39,6 +40,7 @@ pub fn run() {
             move_track_down_in_release,
             set_release_image,
             remove_release_image,
+            write_text_file,
             get_backup_location,
             get_backup_on_exit,
             set_backup_location,

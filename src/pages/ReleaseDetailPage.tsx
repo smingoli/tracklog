@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useNavigate, useParams } from "react-router-dom";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -15,6 +15,7 @@ import {
   removeReleaseImage,
   removeTrackFromRelease,
   setReleaseImage,
+  writeTextFile,
   updateRelease,
 } from "../services/tauri";
 import type {
@@ -221,6 +222,80 @@ export function ReleaseDetailPage({ mode }: Props) {
     }
   }
 
+  function normalizeReleaseTitleForFilename(title: string) {
+    const normalized = title
+      .normalize("NFKD")
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "_");
+    return normalized || "release";
+  }
+
+  async function handleExportDetails() {
+    if (mode !== "edit") return;
+    const releaseId = Number(id);
+    if (!releaseId || Number.isNaN(releaseId)) return;
+    try {
+      setError(null);
+      setMessage(null);
+      await initializeApp();
+      const release = await getReleaseById(releaseId);
+      if (!release) {
+        setError("Release not found.");
+        return;
+      }
+      const releaseTracks = await listTracksForRelease(releaseId);
+      if (releaseTracks.length === 0) {
+        setError("Cannot export details because this release has no tracks.");
+        return;
+      }
+
+      const lines: string[] = [];
+      lines.push(`Release Title: ${release.title}`);
+      lines.push(`Internal Code: ${release.internalCode}`);
+      lines.push(`Type: ${release.type}`);
+      lines.push(`Status: ${release.status}`);
+      lines.push("");
+      lines.push("Tracklist Summary");
+      lines.push("-----------------");
+      for (const track of releaseTracks) {
+        const trackNumber = String(track.trackOrder).padStart(2, "0");
+        lines.push(`Track ${trackNumber} - ${track.title}`);
+      }
+
+      lines.push("");
+      lines.push("==============================");
+      lines.push("");
+
+      for (const track of releaseTracks) {
+        lines.push(`--- TRACK ${track.trackOrder}: ${track.title.toUpperCase()} ---`);
+        lines.push("");
+        lines.push("[Description]");
+        lines.push(track.description?.trim() || "(No description provided)");
+        lines.push("");
+        lines.push("[Lyrics]");
+        lines.push(track.lyrics?.trim() || "(No lyrics provided)");
+        lines.push("");
+      }
+
+      const fileContents = lines.join("\n");
+      const fileName = `${normalizeReleaseTitleForFilename(release.title)}_details.txt`;
+      const targetPath = await save({
+        defaultPath: fileName,
+        filters: [{ name: "Text File", extensions: ["txt"] }],
+      });
+      if (!targetPath || Array.isArray(targetPath)) {
+        setMessage("Export canceled.");
+        return;
+      }
+
+      await writeTextFile(targetPath, fileContents);
+      setMessage(`Exported details to ${targetPath}`);
+    } catch (e) {
+      setError(`Failed to export details: ${String(e)}`);
+    }
+  }
+
   if (loading) {
     return <p>Loading...</p>;
   }
@@ -282,6 +357,7 @@ export function ReleaseDetailPage({ mode }: Props) {
           <button disabled={!canSave} onClick={handleSave}>Save</button>
           <button className="secondary" onClick={() => navigate("/releases")}>Back</button>
           {mode === "edit" && <button className="secondary" onClick={handleChooseImage}>{form.imagePath ? "Replace Image" : "Upload Image"}</button>}
+          {mode === "edit" && <button className="secondary" onClick={handleExportDetails}>Export Details</button>}
           {mode === "edit" && form.imagePath && <button className="danger" onClick={handleRemoveImage}>Remove Image</button>}
           {mode === "edit" && <button className="danger" onClick={handleDelete}>Delete</button>}
         </div>

@@ -61,6 +61,8 @@ export type ReleaseTrackRow = {
   internalCode: string;
   title: string;
   status: TrackStatus;
+  description: string | null;
+  lyrics: string | null;
   bpm: number | null;
   key: string | null;
 };
