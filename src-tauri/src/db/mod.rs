@@ -455,7 +455,7 @@ pub fn list_tracks_for_release(release_id: i64) -> Result<Vec<ReleaseTrackRow>, 
     let conn = open_connection()?;
     let mut stmt = conn
         .prepare(
-            "SELECT rt.track_order, t.id AS track_id, t.internal_code, t.title, t.status, t.bpm, t.musical_key
+            "SELECT rt.track_order, t.id AS track_id, t.internal_code, t.title, t.status, t.description, t.lyrics, t.bpm, t.musical_key
              FROM release_tracks rt
              JOIN tracks t ON t.id = rt.track_id
              WHERE rt.release_id = ?1
@@ -470,6 +470,8 @@ pub fn list_tracks_for_release(release_id: i64) -> Result<Vec<ReleaseTrackRow>, 
                 internal_code: row.get("internal_code")?,
                 title: row.get("title")?,
                 status: row.get("status")?,
+                description: row.get("description")?,
+                lyrics: row.get("lyrics")?,
                 bpm: row.get("bpm")?,
                 key: row.get("musical_key")?,
             })

@@ -82,6 +82,8 @@ pub struct ReleaseTrackRow {
     pub internal_code: String,
     pub title: String,
     pub status: String,
+    pub description: Option<String>,
+    pub lyrics: Option<String>,
     pub bpm: Option<i64>,
     pub key: Option<String>,
 }
