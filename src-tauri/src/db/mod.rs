@@ -5,6 +5,7 @@ use std::path::Path;
 
 use crate::fs::{
     allowed_image_extension, db_path, ensure_storage_dirs, managed_release_image_path,
+    resolve_portable_local_appdata_path, to_portable_local_appdata_path,
 };
 use crate::models::{
     DashboardSummary, Release, ReleaseInput, ReleaseTrackRow, Track, TrackInput, TrackListRow,
@@ -161,6 +162,7 @@ fn map_track_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackListRow>
 }
 
 fn map_release(row: &rusqlite::Row<'_>) -> rusqlite::Result<Release> {
+    let image_path: Option<String> = row.get("image_path")?;
     Ok(Release {
         id: row.get("id")?,
         internal_code: row.get("internal_code")?,
@@ -168,7 +170,11 @@ fn map_release(row: &rusqlite::Row<'_>) -> rusqlite::Result<Release> {
         r#type: row.get("type")?,
         status: row.get("status")?,
         description: row.get("description")?,
-        image_path: row.get("image_path")?,
+        image_path: image_path.map(|path| {
+            resolve_portable_local_appdata_path(&path)
+                .to_string_lossy()
+                .to_string()
+        }),
         track_count: row.get("track_count")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
@@ -371,6 +377,10 @@ pub fn create_release(input: ReleaseInput) -> Result<Release, String> {
     validate_release_input(&input)?;
     let conn = open_connection()?;
     let now = now_iso();
+    let normalized_image_path = trim_to_opt(&input.image_path).map(|path| {
+        let resolved = resolve_portable_local_appdata_path(&path);
+        to_portable_local_appdata_path(&resolved)
+    });
     conn.execute(
         "INSERT INTO releases (internal_code, title, type, status, description, image_path, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -380,7 +390,7 @@ pub fn create_release(input: ReleaseInput) -> Result<Release, String> {
             input.r#type,
             input.status,
             trim_to_opt(&input.description),
-            trim_to_opt(&input.image_path),
+            normalized_image_path,
             now,
             now,
         ],
@@ -399,6 +409,10 @@ pub fn create_release(input: ReleaseInput) -> Result<Release, String> {
 pub fn update_release(id: i64, input: ReleaseInput) -> Result<Release, String> {
     validate_release_input(&input)?;
     let conn = open_connection()?;
+    let normalized_image_path = trim_to_opt(&input.image_path).map(|path| {
+        let resolved = resolve_portable_local_appdata_path(&path);
+        to_portable_local_appdata_path(&resolved)
+    });
     let updated = conn
         .execute(
             "UPDATE releases
@@ -416,7 +430,7 @@ pub fn update_release(id: i64, input: ReleaseInput) -> Result<Release, String> {
                 input.r#type,
                 input.status,
                 trim_to_opt(&input.description),
-                trim_to_opt(&input.image_path),
+                normalized_image_path,
                 now_iso(),
                 id,
             ],
@@ -442,7 +456,7 @@ pub fn delete_release(id: i64) -> Result<(), String> {
     let release = get_release_by_id(id)?;
     if let Some(release) = &release {
         if let Some(path) = &release.image_path {
-            let _ = fs::remove_file(path);
+            let _ = fs::remove_file(resolve_portable_local_appdata_path(path));
         }
     }
     let conn = open_connection()?;
@@ -646,8 +660,9 @@ pub fn set_release_image(release_id: i64, source_path: String) -> Result<Release
     }
 
     if let Some(old) = &release.image_path {
-        if old != dest.to_string_lossy().as_ref() {
-            let _ = fs::remove_file(old);
+        let old_path = resolve_portable_local_appdata_path(old);
+        if old_path != dest {
+            let _ = fs::remove_file(old_path);
         }
     }
 
@@ -656,7 +671,7 @@ pub fn set_release_image(release_id: i64, source_path: String) -> Result<Release
     let conn = open_connection()?;
     conn.execute(
         "UPDATE releases SET image_path = ?1, updated_at = ?2 WHERE id = ?3",
-        params![dest.to_string_lossy().to_string(), now_iso(), release_id],
+        params![to_portable_local_appdata_path(&dest), now_iso(), release_id],
     )
     .map_err(|e| e.to_string())?;
 
@@ -666,7 +681,7 @@ pub fn set_release_image(release_id: i64, source_path: String) -> Result<Release
 pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
     let release = get_release_by_id(release_id)?.ok_or("Release not found")?;
     if let Some(path) = &release.image_path {
-        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(resolve_portable_local_appdata_path(path));
     }
     let conn = open_connection()?;
     conn.execute(

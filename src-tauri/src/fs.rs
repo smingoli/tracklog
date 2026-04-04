@@ -3,6 +3,8 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const LOCAL_APPDATA_TOKEN: &str = "%LocalAppData%";
+
 pub fn app_root() -> Result<PathBuf, String> {
     let mut root = data_local_dir().ok_or("Could not resolve Local AppData path")?;
     root.push("TrackLog");
@@ -62,6 +64,51 @@ pub fn managed_release_image_path(
         ext.to_lowercase()
     ));
     Ok(dst)
+}
+
+pub fn to_portable_local_appdata_path(path: &Path) -> String {
+    let Some(local_app_data) = data_local_dir() else {
+        return path.to_string_lossy().to_string();
+    };
+    let Ok(relative_path) = path.strip_prefix(&local_app_data) else {
+        return path.to_string_lossy().to_string();
+    };
+    let relative = relative_path.to_string_lossy().replace('/', "\\");
+    if relative.is_empty() {
+        LOCAL_APPDATA_TOKEN.to_string()
+    } else {
+        format!(r"{LOCAL_APPDATA_TOKEN}\{relative}")
+    }
+}
+
+pub fn resolve_portable_local_appdata_path(stored_path: &str) -> PathBuf {
+    let trimmed = stored_path.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("%localappdata%") {
+        return PathBuf::from(trimmed);
+    }
+
+    let Some(local_app_data) = data_local_dir() else {
+        return PathBuf::from(trimmed);
+    };
+
+    let suffix = trimmed
+        .get(LOCAL_APPDATA_TOKEN.len()..)
+        .unwrap_or_default()
+        .trim_start_matches(['\\', '/']);
+
+    if suffix.is_empty() {
+        return local_app_data;
+    }
+
+    let mut resolved = local_app_data;
+    for segment in suffix
+        .split(['\\', '/'])
+        .filter(|segment| !segment.is_empty())
+    {
+        resolved.push(segment);
+    }
+    resolved
 }
 
 pub fn sanitize_filename(name: &str) -> String {
