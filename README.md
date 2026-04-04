@@ -188,6 +188,7 @@ Supported track statuses:
 A release is a grouping of tracks such as an album, EP, or single.
 
 Each release can optionally store a managed local artwork path.
+On Windows, stored artwork paths are persisted with `%LocalAppData%` (for example, `%LocalAppData%\TrackLog\data\images\releases\...`) instead of a machine-specific absolute user profile path.
 
 ### Release Assignment
 A track can be assigned to only one release at a time. This is enforced in the database schema and backend logic. Track ordering inside a release is stored explicitly and can be changed later.
@@ -215,6 +216,7 @@ TrackLog/data/images/releases/
 The backend creates these directories automatically when needed. File names are sanitized and derived from the release internal code.
 
 On Windows, this is typically under the user’s Local AppData directory.
+To keep data portable across machines, TrackLog persists release image paths in the database using `%LocalAppData%` tokenized paths and resolves them at runtime.
 
 ### App settings
 TrackLog also stores app-level settings (such as selected backup location) in:
