@@ -21,6 +21,7 @@ TrackLog currently supports:
 - filtering releases by type and status
 - searching tracks by internal code or title
 - uploading and managing release artwork locally
+- exporting release details to a user-selected `.txt` file (metadata, tracklist, description, lyrics)
 - showing dashboard summaries and recently updated items
 - configuring backup location from Settings
 - creating zipped backups (database + images)
@@ -148,6 +149,12 @@ In edit mode, users can:
 - add available tracks to the release
 - remove tracks from the release
 - reorder tracks using Move Up / Move Down actions
+- export release details to a text file using a native save dialog
+
+The release details export writes a text file that includes:
+- release metadata (title, code, type, status)
+- a top tracklist summary
+- per-track sections with `[Description]` and `[Lyrics]`
 
 Artwork is previewed through Tauri file handling and stored in TrackLog-managed local storage.
 
@@ -255,6 +262,7 @@ The frontend uses Tauri commands for all data access and mutations. Current comm
 - assign or remove tracks from releases
 - move tracks within a release
 - set or remove release images
+- write arbitrary text files (`write_text_file`) used by release detail export
 - get dashboard summary
 - get/set backup location
 - create zipped backup
