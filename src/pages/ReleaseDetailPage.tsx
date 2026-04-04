@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useNavigate, useParams } from "react-router-dom";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -15,6 +15,7 @@ import {
   removeReleaseImage,
   removeTrackFromRelease,
   setReleaseImage,
+  writeTextFile,
   updateRelease,
 } from "../services/tauri";
 import type {
@@ -279,16 +280,17 @@ export function ReleaseDetailPage({ mode }: Props) {
 
       const fileContents = lines.join("\n");
       const fileName = `${normalizeReleaseTitleForFilename(release.title)}_details.txt`;
-      const blob = new Blob([fileContents], { type: "text/plain;charset=utf-8" });
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(objectUrl);
-      setMessage(`Exported ${fileName}`);
+      const targetPath = await save({
+        defaultPath: fileName,
+        filters: [{ name: "Text File", extensions: ["txt"] }],
+      });
+      if (!targetPath || Array.isArray(targetPath)) {
+        setMessage("Export canceled.");
+        return;
+      }
+
+      await writeTextFile(targetPath, fileContents);
+      setMessage(`Exported details to ${targetPath}`);
     } catch (e) {
       setError(`Failed to export details: ${String(e)}`);
     }

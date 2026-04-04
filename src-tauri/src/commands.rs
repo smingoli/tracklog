@@ -112,6 +112,11 @@ pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
 }
 
 #[command]
+pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    crate::fs::write_text_file(&path, &contents)
+}
+
+#[command]
 pub fn get_backup_location() -> Result<Option<String>, String> {
     backup::get_backup_location()
 }
