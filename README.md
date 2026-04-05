@@ -386,6 +386,7 @@ Stefano Mingoli
 
 ## License
 
-No license has been defined yet.
+TrackLog is licensed under the **GNU General Public License v3.0 (GPL-3.0-only)**.
 
-Until a license is added, this repository should be treated as all rights reserved by default.
+- See [`LICENSE`](./LICENSE) for the full license text.
+- See [`docs/licensing.md`](./docs/licensing.md) for practical guidance on using, modifying, and redistributing TrackLog under GPL v3.
