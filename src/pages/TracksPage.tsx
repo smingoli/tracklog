@@ -1,20 +1,80 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { initializeApp, listTracks, searchTracks } from "../services/tauri";
-import type { TrackListRow, TrackStatus } from "../types/models";
+import { initializeApp, listReleases, listTracks, searchTracks } from "../services/tauri";
+import type { Release, TrackListRow, TrackStatus } from "../types/models";
+
+type AvailabilityFilter = "All" | "Available" | "Assigned";
+type TrackFilters = {
+  status: "All" | TrackStatus;
+  availability: AvailabilityFilter;
+  releaseId: "All" | string;
+};
+
+const STORAGE_KEY = "tracklog:tracks:filters";
+
+function loadPersistedFilters(): TrackFilters {
+  if (typeof window === "undefined") {
+    return { status: "All", availability: "All", releaseId: "All" };
+  }
+
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    return { status: "All", availability: "All", releaseId: "All" };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<TrackFilters>;
+    const status =
+      parsed.status === "Idea" ||
+      parsed.status === "Draft" ||
+      parsed.status === "In Progress" ||
+      parsed.status === "Final" ||
+      parsed.status === "All"
+        ? parsed.status
+        : "All";
+
+    const availability =
+      parsed.availability === "Available" ||
+      parsed.availability === "Assigned" ||
+      parsed.availability === "All"
+        ? parsed.availability
+        : "All";
+
+    const releaseId =
+      parsed.releaseId === "All" || typeof parsed.releaseId === "string"
+        ? parsed.releaseId
+        : "All";
+
+    return {
+      status,
+      availability,
+      releaseId,
+    };
+  } catch {
+    return { status: "All", availability: "All", releaseId: "All" };
+  }
+}
 
 export function TracksPage() {
+  const persistedFilters = loadPersistedFilters();
+
   const [tracks, setTracks] = useState<TrackListRow[]>([]);
+  const [assignedReleases, setAssignedReleases] = useState<Release[]>([]);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"All" | TrackStatus>("All");
-  const [availabilityFilter, setAvailabilityFilter] = useState<"All" | "Available" | "Assigned">("All");
+  const [statusFilter, setStatusFilter] = useState<"All" | TrackStatus>(persistedFilters.status);
+  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>(persistedFilters.availability);
+  const [releaseFilter, setReleaseFilter] = useState<"All" | string>(persistedFilters.releaseId);
 
   async function reload(q?: string) {
     await initializeApp();
-    const rows = (q && q.trim())
-      ? await searchTracks(q).catch(() => [])
-      : await listTracks().catch(() => []);
+
+    const [rows, releases] = await Promise.all([
+      (q && q.trim()) ? searchTracks(q).catch(() => []) : listTracks().catch(() => []),
+      listReleases().catch(() => []),
+    ]);
+
     setTracks(rows);
+    setAssignedReleases(releases.filter((release) => (release.trackCount ?? 0) > 0));
   }
 
   useEffect(() => {
@@ -28,14 +88,50 @@ export function TracksPage() {
     return () => clearTimeout(handle);
   }, [query]);
 
+  useEffect(() => {
+    if (availabilityFilter !== "Assigned") {
+      setReleaseFilter("All");
+    }
+  }, [availabilityFilter]);
+
+  useEffect(() => {
+    if (releaseFilter === "All") {
+      return;
+    }
+
+    const releaseStillExists = assignedReleases.some((release) => String(release.id) === releaseFilter);
+    if (!releaseStillExists) {
+      setReleaseFilter("All");
+    }
+  }, [assignedReleases, releaseFilter]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const stateToPersist: TrackFilters = {
+      status: statusFilter,
+      availability: availabilityFilter,
+      releaseId: availabilityFilter === "Assigned" ? releaseFilter : "All",
+    };
+
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToPersist));
+  }, [availabilityFilter, releaseFilter, statusFilter]);
+
   const filtered = useMemo(() => {
     return tracks.filter((track) => {
       const statusOk = statusFilter === "All" || track.status === statusFilter;
       const availabilityOk =
         availabilityFilter === "All" || track.availability === availabilityFilter;
-      return statusOk && availabilityOk;
+      const releaseOk =
+        availabilityFilter !== "Assigned" ||
+        releaseFilter === "All" ||
+        String(track.assignedReleaseId) === releaseFilter;
+
+      return statusOk && availabilityOk && releaseOk;
     });
-  }, [tracks, statusFilter, availabilityFilter]);
+  }, [tracks, statusFilter, availabilityFilter, releaseFilter]);
 
   return (
     <div>
@@ -68,13 +164,29 @@ export function TracksPage() {
             <label>Availability</label>
             <select
               value={availabilityFilter}
-              onChange={(e) => setAvailabilityFilter(e.target.value as "All" | "Available" | "Assigned")}
+              onChange={(e) => setAvailabilityFilter(e.target.value as AvailabilityFilter)}
             >
               <option value="All">All</option>
               <option value="Available">Available</option>
               <option value="Assigned">Assigned</option>
             </select>
           </div>
+          {availabilityFilter === "Assigned" && (
+            <div className="field">
+              <label>Release</label>
+              <select
+                value={releaseFilter}
+                onChange={(e) => setReleaseFilter(e.target.value)}
+              >
+                <option value="All">All assigned releases</option>
+                {assignedReleases.map((release) => (
+                  <option key={release.id} value={String(release.id)}>
+                    {release.title} ({release.internalCode})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 

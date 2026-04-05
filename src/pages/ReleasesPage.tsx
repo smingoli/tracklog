@@ -3,10 +3,53 @@ import { Link } from "react-router-dom";
 import { initializeApp, listReleases } from "../services/tauri";
 import type { Release, ReleaseStatus, ReleaseType } from "../types/models";
 
+type ReleaseFilters = {
+  type: "All" | ReleaseType;
+  status: "All" | ReleaseStatus;
+};
+
+const STORAGE_KEY = "tracklog:releases:filters";
+
+function loadPersistedFilters(): ReleaseFilters {
+  if (typeof window === "undefined") {
+    return { type: "All", status: "All" };
+  }
+
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    return { type: "All", status: "All" };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<ReleaseFilters>;
+    const type =
+      parsed.type === "Album" ||
+      parsed.type === "EP" ||
+      parsed.type === "Single" ||
+      parsed.type === "All"
+        ? parsed.type
+        : "All";
+
+    const status =
+      parsed.status === "Planned" ||
+      parsed.status === "In Progress" ||
+      parsed.status === "Released" ||
+      parsed.status === "All"
+        ? parsed.status
+        : "All";
+
+    return { type, status };
+  } catch {
+    return { type: "All", status: "All" };
+  }
+}
+
 export function ReleasesPage() {
+  const persistedFilters = loadPersistedFilters();
+
   const [releases, setReleases] = useState<Release[]>([]);
-  const [typeFilter, setTypeFilter] = useState<"All" | ReleaseType>("All");
-  const [statusFilter, setStatusFilter] = useState<"All" | ReleaseStatus>("All");
+  const [typeFilter, setTypeFilter] = useState<"All" | ReleaseType>(persistedFilters.type);
+  const [statusFilter, setStatusFilter] = useState<"All" | ReleaseStatus>(persistedFilters.status);
 
   useEffect(() => {
     (async () => {
@@ -15,6 +58,19 @@ export function ReleasesPage() {
       setReleases(rows);
     })();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const stateToPersist: ReleaseFilters = {
+      type: typeFilter,
+      status: statusFilter,
+    };
+
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToPersist));
+  }, [typeFilter, statusFilter]);
 
   const filtered = useMemo(() => {
     return releases.filter((release) => {

@@ -18,6 +18,8 @@ TrackLog currently supports:
 - removing a track from a release
 - ordering tracks inside a release
 - filtering tracks by status and availability
+- filtering assigned tracks by release when Availability is set to Assigned
+- persisting list dropdown filter selections between view changes
 - filtering releases by type and status
 - searching tracks by internal code or title
 - uploading and managing release artwork locally
@@ -94,10 +96,12 @@ The tracks page provides:
 - searchable track list
 - status filter
 - availability filter
+- conditional release filter (shown only when Availability = Assigned)
 - direct navigation to track detail
 - quick action to create a new track
 
 Track search is performed by internal code or title.
+Filter dropdown selections are persisted locally so returning to the page restores the previous filtering state.
 
 ### Track Detail
 Track detail supports both create and edit modes.
