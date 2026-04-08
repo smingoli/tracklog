@@ -625,9 +625,16 @@ fn move_track_in_release(track_id: i64, release_id: i64, up: bool) -> Result<(),
     };
 
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let temp_order: i64 = tx
+        .query_row(
+            "SELECT COALESCE(MAX(track_order), 0) + 1 FROM release_tracks WHERE release_id = ?1",
+            params![release_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
     tx.execute(
-        "UPDATE release_tracks SET track_order = 0 WHERE release_id = ?1 AND track_id = ?2",
-        params![release_id, track_id],
+        "UPDATE release_tracks SET track_order = ?3 WHERE release_id = ?1 AND track_id = ?2",
+        params![release_id, track_id, temp_order],
     )
     .map_err(|e| e.to_string())?;
     tx.execute(
