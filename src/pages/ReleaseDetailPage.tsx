@@ -380,6 +380,8 @@ export function ReleaseDetailPage({ mode }: Props) {
                 <th>Internal Code</th>
                 <th>Title</th>
                 <th>Status</th>
+                <th>Tempo (BPM)</th>
+                <th>Key</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -390,6 +392,8 @@ export function ReleaseDetailPage({ mode }: Props) {
                   <td>{track.internalCode}</td>
                   <td>{track.title}</td>
                   <td>{track.status}</td>
+                  <td>{track.bpm ?? ""}</td>
+                  <td>{track.key ?? ""}</td>
                   <td>
                     <div className="row-actions">
                       <button className="secondary" disabled={idx === 0} onClick={() => handleMoveUp(track.trackId)}>Move Up</button>
@@ -401,7 +405,7 @@ export function ReleaseDetailPage({ mode }: Props) {
               ))}
               {tracks.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="muted">No tracks assigned yet.</td>
+                  <td colSpan={7} className="muted">No tracks assigned yet.</td>
                 </tr>
               )}
             </tbody>

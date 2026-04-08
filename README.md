@@ -153,6 +153,7 @@ In edit mode, users can:
 - add available tracks to the release
 - remove tracks from the release
 - reorder tracks using Move Up / Move Down actions
+- view track tempo (BPM) and key directly in the release track list
 - export release details to a text file using a native save dialog
 
 The release details export writes a text file that includes:
@@ -196,6 +197,7 @@ On Windows, stored artwork paths are persisted with `%LocalAppData%` (for exampl
 
 ### Release Assignment
 A track can be assigned to only one release at a time. This is enforced in the database schema and backend logic. Track ordering inside a release is stored explicitly and can be changed later.
+Reordering is performed with an in-range temporary order value so ordering operations never violate the database check constraint that requires `track_order > 0`.
 
 ---
 
