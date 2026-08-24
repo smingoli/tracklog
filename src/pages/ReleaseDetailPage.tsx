@@ -57,7 +57,8 @@ export function ReleaseDetailPage({ mode }: Props) {
   }
 
   async function reloadAvailableTracks() {
-    const rows = await listAvailableTracks().catch(() => []);
+    if (!id) return;
+    const rows = await listAvailableTracks(Number(id)).catch(() => []);
     setAvailableTracks(rows);
   }
 
@@ -421,7 +422,7 @@ export function ReleaseDetailPage({ mode }: Props) {
               <button className="secondary" onClick={() => setShowAddDialog(false)}>Close</button>
             </div>
             <div className="field">
-              <label>Search available tracks</label>
+              <label>Search tracks not yet on this release</label>
               <input
                 placeholder="Search by code or title"
                 value={addQuery}
@@ -454,7 +455,7 @@ export function ReleaseDetailPage({ mode }: Props) {
                 ))}
                 {filteredAvailableTracks.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="muted">No available tracks found.</td>
+                    <td colSpan={6} className="muted">Every matching track is already on this release.</td>
                   </tr>
                 )}
               </tbody>

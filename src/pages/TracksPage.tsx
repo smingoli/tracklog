@@ -127,7 +127,9 @@ export function TracksPage() {
       const releaseOk =
         availabilityFilter !== "Assigned" ||
         releaseFilter === "All" ||
-        String(track.assignedReleaseId) === releaseFilter;
+        track.assignedReleases.some(
+          (release) => String(release.id) === releaseFilter
+        );
 
       return statusOk && availabilityOk && releaseOk;
     });
@@ -198,7 +200,7 @@ export function TracksPage() {
             <th>Status</th>
             <th>BPM</th>
             <th>Key</th>
-            <th>Assigned Release</th>
+            <th>Assigned Releases</th>
             <th>Last Updated</th>
           </tr>
         </thead>
@@ -211,8 +213,14 @@ export function TracksPage() {
               <td>{track.bpm ?? ""}</td>
               <td>{track.key ?? ""}</td>
               <td>
-                {track.assignedReleaseId ? (
-                  <Link to={`/releases/${track.assignedReleaseId}`}>{track.assignedReleaseTitle}</Link>
+                {track.assignedReleases.length ? (
+                  <div className="release-links">
+                    {track.assignedReleases.map((release) => (
+                      <Link key={release.id} to={`/releases/${release.id}`}>
+                        {release.title} ({release.type})
+                      </Link>
+                    ))}
+                  </div>
                 ) : (
                   <span className="badge">Available</span>
                 )}

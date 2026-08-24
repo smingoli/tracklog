@@ -97,11 +97,12 @@ The tracks page provides:
 - status filter
 - availability filter
 - conditional release filter (shown only when Availability = Assigned)
+- all assigned releases shown per track, with links to each release
 - direct navigation to track detail
 - quick action to create a new track
 
 Track search is performed by internal code or title.
-Filter dropdown selections are persisted locally so returning to the page restores the previous filtering state.
+Filter dropdown selections are persisted locally so returning to the page restores the previous filtering state. For tracks assigned to more than one release, the release filter matches any of those assignments.
 
 ### Track Detail
 Track detail supports both create and edit modes.
@@ -116,7 +117,7 @@ Track fields include:
 - lyrics
 - notes
 
-In create mode, TrackLog also supports **Save and Add Another** for faster consecutive data entry. In edit mode, a track can be assigned to a release or removed from its current release.
+In create mode, TrackLog also supports **Save and Add Another** for faster consecutive data entry. In edit mode, a track can be assigned to multiple releases (for example, an album and a single) without duplicating the track record.
 
 ### Releases
 The releases page provides:
@@ -150,7 +151,7 @@ Release fields include:
 In edit mode, users can:
 - upload or replace release artwork
 - remove release artwork
-- add available tracks to the release
+- add any track not already on that release
 - remove tracks from the release
 - reorder tracks using Move Up / Move Down actions
 - view track tempo (BPM) and key directly in the release track list
@@ -196,7 +197,7 @@ Each release can optionally store a managed local artwork path.
 On Windows, stored artwork paths are persisted with `%LocalAppData%` (for example, `%LocalAppData%\TrackLog\data\images\releases\...`) instead of a machine-specific absolute user profile path.
 
 ### Release Assignment
-A track can be assigned to only one release at a time. This is enforced in the database schema and backend logic. Track ordering inside a release is stored explicitly and can be changed later.
+A track can be assigned to multiple releases at the same time. The same track cannot be added to one release twice. Track ordering is stored independently inside each release and can be changed later.
 Reordering is performed with an in-range temporary order value so ordering operations never violate the database check constraint that requires `track_order > 0`.
 
 ---
@@ -250,10 +251,10 @@ Important rules currently enforced:
 - track status must be one of the supported values
 - release type and status must be valid
 - BPM must be positive when provided
-- a track may belong to only one release at a time
+- each release/track association must be unique
 - track order must be unique within a release
 
-The initial schema is defined in `src-tauri/migrations/001_initial_schema.sql`.
+The initial schema is defined in `src-tauri/migrations/001_initial_schema.sql`. Migration 002 normalizes existing catalogs to the many-to-many release/track association while preserving their current links and ordering.
 
 ---
 
@@ -264,7 +265,7 @@ The frontend uses Tauri commands for all data access and mutations. Current comm
 - initialize app storage and schema
 - list and search tracks
 - create, update, and delete tracks
-- list available tracks
+- list tracks not already assigned to a selected release
 - list releases
 - create, update, and delete releases
 - assign or remove tracks from releases

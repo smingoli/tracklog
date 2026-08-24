@@ -9,9 +9,11 @@ use crate::fs::{
 };
 use crate::models::{
     DashboardSummary, Release, ReleaseInput, ReleaseTrackRow, Track, TrackInput, TrackListRow,
+    TrackRelease,
 };
 
 const MIGRATION_001: &str = include_str!("../../migrations/001_initial_schema.sql");
+const MIGRATION_002: &str = include_str!("../../migrations/002_many_to_many_release_tracks.sql");
 
 pub fn open_connection() -> Result<Connection, String> {
     ensure_storage_dirs()?;
@@ -29,6 +31,7 @@ pub fn initialize_database() -> Result<(), String> {
     let mut conn = open_connection()?;
     ensure_schema_migrations_table(&conn)?;
     apply_migration_if_needed(&mut conn, 1, "initial_schema", MIGRATION_001)?;
+    apply_migration_if_needed(&mut conn, 2, "many_to_many_release_tracks", MIGRATION_002)?;
     Ok(())
 }
 
@@ -137,8 +140,11 @@ fn map_track(row: &rusqlite::Row<'_>) -> rusqlite::Result<Track> {
     })
 }
 
-fn map_track_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackListRow> {
-    let assigned_release_id: Option<i64> = row.get("assigned_release_id")?;
+fn map_track_list_row(
+    row: &rusqlite::Row<'_>,
+    assigned_releases: Vec<TrackRelease>,
+) -> rusqlite::Result<TrackListRow> {
+    let is_assigned = !assigned_releases.is_empty();
     Ok(TrackListRow {
         id: row.get("id")?,
         internal_code: row.get("internal_code")?,
@@ -151,14 +157,33 @@ fn map_track_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackListRow>
         key: row.get("musical_key")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
-        assigned_release_id,
-        assigned_release_title: row.get("assigned_release_title")?,
-        availability: if assigned_release_id.is_some() {
+        assigned_releases,
+        availability: if is_assigned {
             "Assigned".to_string()
         } else {
             "Available".to_string()
         },
     })
+}
+
+fn releases_for_track(conn: &Connection, track_id: i64) -> rusqlite::Result<Vec<TrackRelease>> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id, r.internal_code, r.title, r.type
+             FROM releases r
+             JOIN release_tracks rt ON rt.release_id = r.id
+             WHERE rt.track_id = ?1
+             ORDER BY CASE r.type WHEN 'Album' THEN 0 WHEN 'EP' THEN 1 ELSE 2 END,
+                      r.title, r.id",
+    )?;
+    let rows = stmt.query_map(params![track_id], |row| {
+        Ok(TrackRelease {
+            id: row.get("id")?,
+            internal_code: row.get("internal_code")?,
+            title: row.get("title")?,
+            r#type: row.get("type")?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>()
 }
 
 fn map_release(row: &rusqlite::Row<'_>) -> rusqlite::Result<Release> {
@@ -186,15 +211,17 @@ pub fn list_tracks() -> Result<Vec<TrackListRow>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT t.id, t.internal_code, t.title, t.status, t.description, t.lyrics, t.notes, t.bpm, t.musical_key,
-                    t.created_at, t.updated_at, r.id AS assigned_release_id, r.title AS assigned_release_title
+                    t.created_at, t.updated_at
              FROM tracks t
-             LEFT JOIN release_tracks rt ON rt.track_id = t.id
-             LEFT JOIN releases r ON r.id = rt.release_id
              ORDER BY t.updated_at DESC, t.id DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], map_track_list_row)
+        .query_map([], |row| {
+            let track_id: i64 = row.get("id")?;
+            let releases = releases_for_track(&conn, track_id)?;
+            map_track_list_row(row, releases)
+        })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -296,19 +323,21 @@ pub fn delete_track(id: i64) -> Result<(), String> {
     Ok(())
 }
 
-pub fn list_available_tracks() -> Result<Vec<Track>, String> {
+pub fn list_available_tracks(release_id: i64) -> Result<Vec<Track>, String> {
     let conn = open_connection()?;
     let mut stmt = conn
         .prepare(
             "SELECT t.id, t.internal_code, t.title, t.status, t.description, t.lyrics, t.notes, t.bpm, t.musical_key, t.created_at, t.updated_at
              FROM tracks t
-             LEFT JOIN release_tracks rt ON rt.track_id = t.id
-             WHERE rt.track_id IS NULL
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM release_tracks rt
+                 WHERE rt.track_id = t.id AND rt.release_id = ?1
+             )
              ORDER BY t.updated_at DESC, t.id DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], map_track)
+        .query_map(params![release_id], map_track)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -321,16 +350,18 @@ pub fn search_tracks(query: String) -> Result<Vec<TrackListRow>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT t.id, t.internal_code, t.title, t.status, t.description, t.lyrics, t.notes, t.bpm, t.musical_key,
-                    t.created_at, t.updated_at, r.id AS assigned_release_id, r.title AS assigned_release_title
+                    t.created_at, t.updated_at
              FROM tracks t
-             LEFT JOIN release_tracks rt ON rt.track_id = t.id
-             LEFT JOIN releases r ON r.id = rt.release_id
              WHERE t.internal_code LIKE ?1 OR t.title LIKE ?1
              ORDER BY t.updated_at DESC, t.id DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(params![q], map_track_list_row)
+        .query_map(params![q], |row| {
+            let track_id: i64 = row.get("id")?;
+            let releases = releases_for_track(&conn, track_id)?;
+            map_track_list_row(row, releases)
+        })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -525,14 +556,14 @@ pub fn assign_track_to_release(track_id: i64, release_id: i64) -> Result<(), Str
 
     let assigned: Option<i64> = conn
         .query_row(
-            "SELECT release_id FROM release_tracks WHERE track_id = ?1",
-            params![track_id],
+            "SELECT id FROM release_tracks WHERE track_id = ?1 AND release_id = ?2",
+            params![track_id, release_id],
             |row| row.get(0),
         )
         .optional()
         .map_err(|e| e.to_string())?;
     if assigned.is_some() {
-        return Err("Track is already assigned to a release".into());
+        return Err("Track is already assigned to this release".into());
     }
 
     let next_order: i64 = conn

@@ -28,9 +28,15 @@ export type TrackInput = {
 };
 
 export type TrackListRow = Track & {
-  assignedReleaseId: number | null;
-  assignedReleaseTitle: string | null;
+  assignedReleases: TrackRelease[];
   availability: "Available" | "Assigned";
+};
+
+export type TrackRelease = {
+  id: number;
+  internalCode: string;
+  title: string;
+  type: ReleaseType;
 };
 
 export type Release = {

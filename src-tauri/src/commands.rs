@@ -42,8 +42,8 @@ pub fn delete_track(id: i64) -> Result<(), String> {
 }
 
 #[command]
-pub fn list_available_tracks() -> Result<Vec<Track>, String> {
-    db::list_available_tracks()
+pub fn list_available_tracks(release_id: i64) -> Result<Vec<Track>, String> {
+    db::list_available_tracks(release_id)
 }
 
 #[command]

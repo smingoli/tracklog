@@ -181,3 +181,16 @@ textarea {
   padding: 10px;
   font-size: 14px;
 }
+.release-links,
+.assignment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assignment-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
