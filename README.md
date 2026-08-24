@@ -1,5 +1,7 @@
 # TrackLog
 
+Current application version: **0.1.3**.
+
 TrackLog is a local-first desktop application for managing music tracks and releases.
 
 It is designed for musicians, bands, producers, songwriters, and anyone who creates music. As a lightweight catalog tool, it helps organize song ideas, drafts, finished tracks, and release groupings such as albums, EPs, and singles.
