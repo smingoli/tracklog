@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TrackLog Nightly",
+  "productName": "TrackLog",
   "version": "0.1.4",
   "identifier": "net.mind-it.tracklog",
   "build": {
