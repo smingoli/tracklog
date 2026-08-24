@@ -1,6 +1,6 @@
 # TrackLog
 
-Current application version: **0.1.3**.
+Current application version: **0.1.4**.
 
 TrackLog is a local-first desktop application for managing music tracks and releases.
 
@@ -100,6 +100,7 @@ The tracks page provides:
 - availability filter
 - conditional release filter (shown only when Availability = Assigned)
 - all assigned releases shown per track, with links to each release
+- sortable table headings for code, title, status, BPM, key, assigned releases and last updated
 - direct navigation to track detail
 - quick action to create a new track
 

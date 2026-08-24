@@ -4,6 +4,8 @@ import { initializeApp, listReleases, listTracks, searchTracks } from "../servic
 import type { Release, TrackListRow, TrackStatus } from "../types/models";
 
 type AvailabilityFilter = "All" | "Available" | "Assigned";
+type SortKey = "internalCode" | "title" | "status" | "bpm" | "key" | "assignedReleases" | "updatedAt";
+type SortDirection = "asc" | "desc";
 type TrackFilters = {
   status: "All" | TrackStatus;
   availability: AvailabilityFilter;
@@ -11,6 +13,27 @@ type TrackFilters = {
 };
 
 const STORAGE_KEY = "tracklog:tracks:filters";
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+function compareOptional<T>(
+  left: T | null,
+  right: T | null,
+  compare: (a: T, b: T) => number,
+  direction: SortDirection,
+) {
+  if (left === null && right === null) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  const result = compare(left, right);
+  return direction === "asc" ? result : -result;
+}
+
+function releaseSortValue(track: TrackListRow) {
+  if (!track.assignedReleases.length) return null;
+  return track.assignedReleases
+    .map((release) => `${release.title} (${release.type})`)
+    .join(" | ");
+}
 
 function loadPersistedFilters(): TrackFilters {
   if (typeof window === "undefined") {
@@ -64,6 +87,8 @@ export function TracksPage() {
   const [statusFilter, setStatusFilter] = useState<"All" | TrackStatus>(persistedFilters.status);
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>(persistedFilters.availability);
   const [releaseFilter, setReleaseFilter] = useState<"All" | string>(persistedFilters.releaseId);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   async function reload(q?: string) {
     await initializeApp();
@@ -135,6 +160,60 @@ export function TracksPage() {
     });
   }, [tracks, statusFilter, availabilityFilter, releaseFilter]);
 
+  const sortedTracks = useMemo(() => {
+    if (!sortKey) return filtered;
+
+    return [...filtered].sort((left, right) => {
+      switch (sortKey) {
+        case "internalCode":
+          return compareOptional(left.internalCode, right.internalCode, collator.compare, sortDirection);
+        case "title":
+          return compareOptional(left.title, right.title, collator.compare, sortDirection);
+        case "status":
+          return compareOptional(left.status, right.status, collator.compare, sortDirection);
+        case "bpm":
+          return compareOptional(left.bpm, right.bpm, (a, b) => a - b, sortDirection);
+        case "key":
+          return compareOptional(left.key, right.key, collator.compare, sortDirection);
+        case "assignedReleases":
+          return compareOptional(releaseSortValue(left), releaseSortValue(right), collator.compare, sortDirection);
+        case "updatedAt":
+          return compareOptional(
+            Date.parse(left.updatedAt),
+            Date.parse(right.updatedAt),
+            (a, b) => a - b,
+            sortDirection,
+          );
+      }
+    });
+  }, [filtered, sortKey, sortDirection]);
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDirection((current) => current === "asc" ? "desc" : "asc");
+      return;
+    }
+    setSortKey(key);
+    setSortDirection("asc");
+  }
+
+  function sortableHeading(key: SortKey, label: string) {
+    const active = sortKey === key;
+    const ariaSort = active
+      ? (sortDirection === "asc" ? "ascending" : "descending")
+      : "none";
+    return (
+      <th aria-sort={ariaSort}>
+        <button className={`sort-heading${active ? " active" : ""}`} onClick={() => handleSort(key)}>
+          <span>{label}</span>
+          <span className="sort-indicator" aria-hidden="true">
+            {active ? (sortDirection === "asc" ? "▲" : "▼") : "↕"}
+          </span>
+        </button>
+      </th>
+    );
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -195,17 +274,17 @@ export function TracksPage() {
       <table className="table">
         <thead>
           <tr>
-            <th>Internal Code</th>
-            <th>Title</th>
-            <th>Status</th>
-            <th>BPM</th>
-            <th>Key</th>
-            <th>Assigned Releases</th>
-            <th>Last Updated</th>
+            {sortableHeading("internalCode", "Internal Code")}
+            {sortableHeading("title", "Title")}
+            {sortableHeading("status", "Status")}
+            {sortableHeading("bpm", "BPM")}
+            {sortableHeading("key", "Key")}
+            {sortableHeading("assignedReleases", "Assigned Releases")}
+            {sortableHeading("updatedAt", "Last Updated")}
           </tr>
         </thead>
         <tbody>
-          {filtered.map((track) => (
+          {sortedTracks.map((track) => (
             <tr key={track.id}>
               <td><Link to={`/tracks/${track.id}`}>{track.internalCode}</Link></td>
               <td>{track.title}</td>
@@ -228,7 +307,7 @@ export function TracksPage() {
               <td>{track.updatedAt}</td>
             </tr>
           ))}
-          {filtered.length === 0 && (
+          {sortedTracks.length === 0 && (
             <tr>
               <td colSpan={7} className="muted">No tracks found.</td>
             </tr>
