@@ -1,6 +1,6 @@
 # TrackLog
 
-Current application version: **0.1.4**.
+Current application version: **0.1.5**.
 
 TrackLog is a local-first desktop application for managing music tracks and releases.
 
@@ -155,6 +155,7 @@ In edit mode, users can:
 - upload or replace release artwork
 - remove release artwork
 - add any track not already on that release
+- choose between unassigned tracks (the default) and all tracks when adding to a release
 - remove tracks from the release
 - reorder tracks using Move Up / Move Down actions
 - view track tempo (BPM) and key directly in the release track list

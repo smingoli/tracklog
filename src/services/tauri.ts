@@ -37,8 +37,8 @@ export async function deleteTrack(id: number): Promise<void> {
   await invoke("delete_track", { id });
 }
 
-export async function listAvailableTracks(releaseId: number): Promise<Track[]> {
-  return invoke("list_available_tracks", { releaseId });
+export async function listAvailableTracks(releaseId: number, unassignedOnly: boolean): Promise<Track[]> {
+  return invoke("list_available_tracks", { releaseId, unassignedOnly });
 }
 
 export async function searchTracks(query: string): Promise<TrackListRow[]> {

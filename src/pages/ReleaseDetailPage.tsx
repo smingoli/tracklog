@@ -47,6 +47,7 @@ export function ReleaseDetailPage({ mode }: Props) {
   const [availableTracks, setAvailableTracks] = useState<Track[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [addQuery, setAddQuery] = useState("");
+  const [addTrackScope, setAddTrackScope] = useState<"Unassigned" | "All">("Unassigned");
   const [loading, setLoading] = useState(mode === "edit");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -56,9 +57,9 @@ export function ReleaseDetailPage({ mode }: Props) {
     setTracks(releaseTracks);
   }
 
-  async function reloadAvailableTracks() {
+  async function reloadAvailableTracks(scope = addTrackScope) {
     if (!id) return;
-    const rows = await listAvailableTracks(Number(id)).catch(() => []);
+    const rows = await listAvailableTracks(Number(id), scope === "Unassigned").catch(() => []);
     setAvailableTracks(rows);
   }
 
@@ -371,7 +372,11 @@ export function ReleaseDetailPage({ mode }: Props) {
         <div className="panel">
           <div className="page-header">
             <h3>Tracks</h3>
-            <button onClick={() => { setShowAddDialog(true); reloadAvailableTracks(); }}>Add Track</button>
+            <button onClick={() => {
+              setAddTrackScope("Unassigned");
+              setShowAddDialog(true);
+              reloadAvailableTracks("Unassigned");
+            }}>Add Track</button>
           </div>
 
           <table className="table">
@@ -422,6 +427,20 @@ export function ReleaseDetailPage({ mode }: Props) {
               <button className="secondary" onClick={() => setShowAddDialog(false)}>Close</button>
             </div>
             <div className="field">
+              <label>Show</label>
+              <select
+                value={addTrackScope}
+                onChange={(e) => {
+                  const scope = e.target.value as "Unassigned" | "All";
+                  setAddTrackScope(scope);
+                  reloadAvailableTracks(scope);
+                }}
+              >
+                <option value="Unassigned">Unassigned</option>
+                <option value="All">All Tracks</option>
+              </select>
+            </div>
+            <div className="field" style={{ marginTop: 12 }}>
               <label>Search tracks not yet on this release</label>
               <input
                 placeholder="Search by code or title"
@@ -455,7 +474,11 @@ export function ReleaseDetailPage({ mode }: Props) {
                 ))}
                 {filteredAvailableTracks.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="muted">Every matching track is already on this release.</td>
+                    <td colSpan={6} className="muted">
+                      {addTrackScope === "Unassigned"
+                        ? "No matching unassigned tracks found."
+                        : "Every matching track is already on this release."}
+                    </td>
                   </tr>
                 )}
               </tbody>

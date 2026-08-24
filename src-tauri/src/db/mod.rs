@@ -323,7 +323,7 @@ pub fn delete_track(id: i64) -> Result<(), String> {
     Ok(())
 }
 
-pub fn list_available_tracks(release_id: i64) -> Result<Vec<Track>, String> {
+pub fn list_available_tracks(release_id: i64, unassigned_only: bool) -> Result<Vec<Track>, String> {
     let conn = open_connection()?;
     let mut stmt = conn
         .prepare(
@@ -333,11 +333,17 @@ pub fn list_available_tracks(release_id: i64) -> Result<Vec<Track>, String> {
                  SELECT 1 FROM release_tracks rt
                  WHERE rt.track_id = t.id AND rt.release_id = ?1
              )
+             AND (
+                 ?2 = 0 OR NOT EXISTS (
+                     SELECT 1 FROM release_tracks assigned
+                     WHERE assigned.track_id = t.id
+                 )
+             )
              ORDER BY t.updated_at DESC, t.id DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(params![release_id], map_track)
+        .query_map(params![release_id, unassigned_only], map_track)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
