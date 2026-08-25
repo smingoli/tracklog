@@ -1,6 +1,6 @@
 # TrackLog
 
-Current application version: **0.1.5**.
+Current application version: **0.1.6**.
 
 TrackLog is a local-first desktop application for managing music tracks and releases.
 
@@ -176,10 +176,20 @@ Users can:
 - choose a backup destination folder using the native system folder picker
 - create a timestamped ZIP backup of app data
 - restore app data from a selected ZIP backup
+- export a companion-app ZIP to a user-selected file
 
 Backups include both:
 - the SQLite database (`catalog.db`)
 - managed release artwork files under `data/images/releases/`
+
+Companion-app exports use this ZIP-root layout:
+
+```text
+catalog.db
+images/
+└── releases/
+    └── ...
+```
 
 ---
 

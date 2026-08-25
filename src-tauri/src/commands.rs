@@ -1,6 +1,7 @@
 use tauri::command;
 
 use crate::backup;
+use crate::companion_export;
 use crate::db;
 use crate::models::{
     DashboardSummary, Release, ReleaseInput, ReleaseTrackRow, Track, TrackInput, TrackListRow,
@@ -144,4 +145,9 @@ pub fn create_backup(destination_dir: String) -> Result<String, String> {
 #[command]
 pub fn restore_backup(backup_zip_path: String) -> Result<(), String> {
     backup::restore_backup(backup_zip_path)
+}
+
+#[command]
+pub fn export_for_companion(destination_path: String) -> Result<String, String> {
+    companion_export::export_for_companion(destination_path)
 }
