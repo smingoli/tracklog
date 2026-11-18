@@ -329,6 +329,23 @@ src-tauri/target/release/bundle/
 
 ---
 
+## Windows Nightly Installer
+
+The Windows Nightly variant uses `src-tauri/tauri.nightly.conf.json` as a Tauri 2 configuration overlay. It installs separately from the stable app, but both variants deliberately share the same catalogue under `%LOCALAPPDATA%\\TrackLog\\data` (see `src-tauri/src/fs.rs`).
+
+From the repository root on a Windows machine with the Node.js, Rust/MSVC, and Tauri build prerequisites installed:
+
+```cmd
+npm ci
+npm run tauri build -- --config src-tauri/tauri.nightly.conf.json --bundles nsis
+```
+
+The NSIS installer is generated under `src-tauri/target/release/bundle/nsis/`. The Nightly executable is named `TrackLog-Nightly.exe`, and the per-user installation is named `TrackLog Nightly`. The version comes from the base `tauri.conf.json` and is not duplicated in the overlay.
+
+**Important:** Back up `%LOCALAPPDATA%\\TrackLog\\data` before testing a new installer or restore workflow, and do not run stable and nightly simultaneously against the shared SQLite catalogue.
+
+---
+
 ## Current Status
 
 TrackLog is already a functional local desktop catalog manager, not just a scaffold. The current codebase includes:
