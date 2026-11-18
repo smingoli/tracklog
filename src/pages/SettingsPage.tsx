@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   createBackup,
-  exportForCompanion,
   getBackupOnExit,
   getBackupLocation,
   initializeApp,
@@ -121,30 +120,6 @@ export function SettingsPage() {
     }
   }
 
-  async function runCompanionExport() {
-    setErrorMessage(null);
-    setStatusMessage(null);
-    const destination = await save({
-      title: "Export for Companion App",
-      defaultPath: "tracklog-companion-export.zip",
-      filters: [{ name: "ZIP", extensions: ["zip"] }],
-    });
-    if (!destination) {
-      setStatusMessage("Export canceled.");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const zipPath = await exportForCompanion(destination);
-      setStatusMessage(`Companion app export created: ${zipPath}`);
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "Companion app export failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div>
       <div className="page-header">
@@ -182,9 +157,6 @@ export function SettingsPage() {
             </button>
             <button type="button" className="danger" onClick={runRestore} disabled={busy}>
               Restore
-            </button>
-            <button type="button" className="secondary" onClick={runCompanionExport} disabled={busy}>
-              Export for Companion App
             </button>
           </div>
 
