@@ -121,7 +121,3 @@ export async function createBackup(destinationDir: string): Promise<string> {
 export async function restoreBackup(backupZipPath: string): Promise<void> {
   await invoke("restore_backup", { backupZipPath });
 }
-
-export async function exportForCompanion(destinationPath: string): Promise<string> {
-  return invoke("export_for_companion", { destinationPath });
-}
