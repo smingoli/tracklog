@@ -161,7 +161,19 @@ Users can:
 
 Backups include both:
 - the SQLite database (`catalog.db`)
-- managed release artwork files under `data/images/releases/`
+- managed release artwork files under `images/releases/`
+
+The ZIP archive uses the same layout expected by the Android Companion app, with no enclosing `data/` directory:
+
+```text
+tracklog-backup-YYYYMMDD-HHMMSS.zip
+├── catalog.db
+└── images/
+    └── releases/
+        └── <release-artwork>
+```
+
+Restoring a backup keeps the desktop filesystem layout unchanged: the archive root is restored into `TrackLog/data/`. Restore also accepts older desktop backups with `data/catalog.db` inside the ZIP. Existing application data is replaced, not merged.
 
 ---
 
