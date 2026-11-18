@@ -122,6 +122,16 @@ pub fn set_backup_location(path: String) -> Result<Option<String>, String> {
 }
 
 #[command]
+pub fn get_backup_on_exit() -> Result<bool, String> {
+    backup::get_backup_on_exit()
+}
+
+#[command]
+pub fn set_backup_on_exit(enabled: bool) -> Result<bool, String> {
+    backup::set_backup_on_exit(enabled)
+}
+
+#[command]
 pub fn create_backup(destination_dir: String) -> Result<String, String> {
     backup::create_backup(destination_dir)
 }
