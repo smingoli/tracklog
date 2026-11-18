@@ -176,9 +176,9 @@ Users can:
 - choose a backup destination folder using the native system folder picker
 - create a timestamped ZIP backup of app data
 - restore app data from a selected ZIP backup
-- export a companion-app ZIP to a user-selected file
+- use the same backup ZIP for Android Companion imports
 
-Desktop backups and Companion exports now share the same ZIP-root layout, including the database and managed artwork:
+Desktop backup ZIPs are also suitable for the Android Companion app. The ZIP-root layout includes the database and managed artwork:
 
 ```text
 catalog.db
