@@ -1,15 +1,19 @@
 import { useEffect, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   createBackup,
+  exportForCompanion,
+  getBackupOnExit,
   getBackupLocation,
   initializeApp,
   restoreBackup,
+  setBackupOnExit,
   setBackupLocation,
 } from "../services/tauri";
 
 export function SettingsPage() {
   const [backupLocation, setBackupLocationState] = useState<string | null>(null);
+  const [backupOnExit, setBackupOnExitState] = useState(false);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -17,8 +21,12 @@ export function SettingsPage() {
   useEffect(() => {
     (async () => {
       await initializeApp();
-      const location = await getBackupLocation().catch(() => null);
+      const [location, enabled] = await Promise.all([
+        getBackupLocation().catch(() => null),
+        getBackupOnExit().catch(() => false),
+      ]);
       setBackupLocationState(location);
+      setBackupOnExitState(enabled);
     })();
   }, []);
 
@@ -43,6 +51,26 @@ export function SettingsPage() {
       setStatusMessage("Backup location saved.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Could not save backup location.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateBackupOnExit(enabled: boolean) {
+    if (enabled && !backupLocation) {
+      setErrorMessage("Please choose a backup location first.");
+      return;
+    }
+
+    setBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+    try {
+      const saved = await setBackupOnExit(enabled);
+      setBackupOnExitState(saved);
+      setStatusMessage(`Backup on exit ${saved ? "enabled" : "disabled"}.`);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not save backup-on-exit setting.");
     } finally {
       setBusy(false);
     }
@@ -93,6 +121,30 @@ export function SettingsPage() {
     }
   }
 
+  async function runCompanionExport() {
+    setErrorMessage(null);
+    setStatusMessage(null);
+    const destination = await save({
+      title: "Export for Companion App",
+      defaultPath: "tracklog-companion-export.zip",
+      filters: [{ name: "ZIP", extensions: ["zip"] }],
+    });
+    if (!destination) {
+      setStatusMessage("Export canceled.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const zipPath = await exportForCompanion(destination);
+      setStatusMessage(`Companion app export created: ${zipPath}`);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Companion app export failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -109,6 +161,18 @@ export function SettingsPage() {
             <input value={backupLocation ?? ""} readOnly placeholder="No backup location selected" />
           </div>
 
+          <div className="field full">
+            <label>Backup on exit</label>
+            <select
+              value={backupOnExit ? "yes" : "no"}
+              onChange={(event) => updateBackupOnExit(event.target.value === "yes")}
+              disabled={busy || !backupLocation}
+            >
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
+          </div>
+
           <div className="actions">
             <button type="button" className="secondary" onClick={chooseBackupLocation} disabled={busy}>
               Choose Location
@@ -118,6 +182,9 @@ export function SettingsPage() {
             </button>
             <button type="button" className="danger" onClick={runRestore} disabled={busy}>
               Restore
+            </button>
+            <button type="button" className="secondary" onClick={runCompanionExport} disabled={busy}>
+              Export for Companion App
             </button>
           </div>
 

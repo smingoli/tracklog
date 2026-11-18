@@ -69,6 +69,39 @@ a { color: inherit; text-decoration: none; }
   font-size: 14px;
   vertical-align: top;
 }
+
+.sort-heading {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sort-heading:hover,
+.sort-heading:focus-visible,
+.sort-heading.active {
+  color: var(--accent, #1677ff);
+  background: transparent;
+}
+
+.sort-indicator {
+  min-width: 1em;
+  font-size: 0.75em;
+  opacity: 0.45;
+}
+
+.sort-heading.active .sort-indicator {
+  opacity: 1;
+}
 .actions {
   display: flex;
   gap: 10px;
@@ -180,4 +213,17 @@ textarea {
   border-radius: 8px;
   padding: 10px;
   font-size: 14px;
+}
+.release-links,
+.assignment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assignment-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }

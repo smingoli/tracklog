@@ -12,6 +12,7 @@ use crate::fs::{app_root, data_dir};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct AppSettings {
     pub backup_location: Option<String>,
+    pub backup_on_exit: bool,
 }
 
 fn settings_path() -> Result<PathBuf, String> {
@@ -34,6 +35,32 @@ pub fn set_backup_location(path: String) -> Result<Option<String>, String> {
     settings.backup_location = Some(target.to_string_lossy().to_string());
     save_settings(&settings)?;
     Ok(settings.backup_location)
+}
+
+pub fn get_backup_on_exit() -> Result<bool, String> {
+    Ok(load_settings()?.backup_on_exit)
+}
+
+pub fn set_backup_on_exit(enabled: bool) -> Result<bool, String> {
+    let mut settings = load_settings()?;
+    if enabled && settings.backup_location.is_none() {
+        return Err("Please choose a backup location before enabling backup on exit".into());
+    }
+    settings.backup_on_exit = enabled;
+    save_settings(&settings)?;
+    Ok(settings.backup_on_exit)
+}
+
+pub fn run_backup_on_exit_if_enabled() -> Result<Option<String>, String> {
+    let settings = load_settings()?;
+    if !settings.backup_on_exit {
+        return Ok(None);
+    }
+
+    let destination = settings
+        .backup_location
+        .ok_or_else(|| "Backup location is required for backup on exit".to_string())?;
+    create_backup(destination).map(Some)
 }
 
 pub fn create_backup(destination_dir: String) -> Result<String, String> {
@@ -100,8 +127,8 @@ pub fn restore_backup(backup_zip_path: String) -> Result<(), String> {
 
     extract_zip(&zip_path, &extraction_root)?;
 
-    // New archives store catalog.db and images/ at the ZIP root for the Android
-    // Companion app. Older desktop backups used an additional data/ directory.
+    // New backups share the Android Companion ZIP-root layout.
+    // Continue accepting the original desktop backups with a data/ wrapper.
     let extracted_data = if extraction_root.join("catalog.db").is_file() {
         extraction_root.clone()
     } else if extraction_root.join("data").join("catalog.db").is_file() {

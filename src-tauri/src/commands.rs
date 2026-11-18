@@ -1,6 +1,7 @@
 use tauri::command;
 
 use crate::backup;
+use crate::companion_export;
 use crate::db;
 use crate::models::{
     DashboardSummary, Release, ReleaseInput, ReleaseTrackRow, Track, TrackInput, TrackListRow,
@@ -42,8 +43,8 @@ pub fn delete_track(id: i64) -> Result<(), String> {
 }
 
 #[command]
-pub fn list_available_tracks() -> Result<Vec<Track>, String> {
-    db::list_available_tracks()
+pub fn list_available_tracks(release_id: i64, unassigned_only: bool) -> Result<Vec<Track>, String> {
+    db::list_available_tracks(release_id, unassigned_only)
 }
 
 #[command]
@@ -112,6 +113,11 @@ pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
 }
 
 #[command]
+pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    crate::fs::write_text_file(&path, &contents)
+}
+
+#[command]
 pub fn get_backup_location() -> Result<Option<String>, String> {
     backup::get_backup_location()
 }
@@ -122,6 +128,16 @@ pub fn set_backup_location(path: String) -> Result<Option<String>, String> {
 }
 
 #[command]
+pub fn get_backup_on_exit() -> Result<bool, String> {
+    backup::get_backup_on_exit()
+}
+
+#[command]
+pub fn set_backup_on_exit(enabled: bool) -> Result<bool, String> {
+    backup::set_backup_on_exit(enabled)
+}
+
+#[command]
 pub fn create_backup(destination_dir: String) -> Result<String, String> {
     backup::create_backup(destination_dir)
 }
@@ -129,4 +145,9 @@ pub fn create_backup(destination_dir: String) -> Result<String, String> {
 #[command]
 pub fn restore_backup(backup_zip_path: String) -> Result<(), String> {
     backup::restore_backup(backup_zip_path)
+}
+
+#[command]
+pub fn export_for_companion(destination_path: String) -> Result<String, String> {
+    companion_export::export_for_companion(destination_path)
 }

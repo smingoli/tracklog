@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useNavigate, useParams } from "react-router-dom";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
@@ -15,6 +15,7 @@ import {
   removeReleaseImage,
   removeTrackFromRelease,
   setReleaseImage,
+  writeTextFile,
   updateRelease,
 } from "../services/tauri";
 import type {
@@ -46,6 +47,7 @@ export function ReleaseDetailPage({ mode }: Props) {
   const [availableTracks, setAvailableTracks] = useState<Track[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [addQuery, setAddQuery] = useState("");
+  const [addTrackScope, setAddTrackScope] = useState<"Unassigned" | "All">("Unassigned");
   const [loading, setLoading] = useState(mode === "edit");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -55,8 +57,9 @@ export function ReleaseDetailPage({ mode }: Props) {
     setTracks(releaseTracks);
   }
 
-  async function reloadAvailableTracks() {
-    const rows = await listAvailableTracks().catch(() => []);
+  async function reloadAvailableTracks(scope = addTrackScope) {
+    if (!id) return;
+    const rows = await listAvailableTracks(Number(id), scope === "Unassigned").catch(() => []);
     setAvailableTracks(rows);
   }
 
@@ -221,6 +224,80 @@ export function ReleaseDetailPage({ mode }: Props) {
     }
   }
 
+  function normalizeReleaseTitleForFilename(title: string) {
+    const normalized = title
+      .normalize("NFKD")
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "_");
+    return normalized || "release";
+  }
+
+  async function handleExportDetails() {
+    if (mode !== "edit") return;
+    const releaseId = Number(id);
+    if (!releaseId || Number.isNaN(releaseId)) return;
+    try {
+      setError(null);
+      setMessage(null);
+      await initializeApp();
+      const release = await getReleaseById(releaseId);
+      if (!release) {
+        setError("Release not found.");
+        return;
+      }
+      const releaseTracks = await listTracksForRelease(releaseId);
+      if (releaseTracks.length === 0) {
+        setError("Cannot export details because this release has no tracks.");
+        return;
+      }
+
+      const lines: string[] = [];
+      lines.push(`Release Title: ${release.title}`);
+      lines.push(`Internal Code: ${release.internalCode}`);
+      lines.push(`Type: ${release.type}`);
+      lines.push(`Status: ${release.status}`);
+      lines.push("");
+      lines.push("Tracklist Summary");
+      lines.push("-----------------");
+      for (const track of releaseTracks) {
+        const trackNumber = String(track.trackOrder).padStart(2, "0");
+        lines.push(`Track ${trackNumber} - ${track.title}`);
+      }
+
+      lines.push("");
+      lines.push("==============================");
+      lines.push("");
+
+      for (const track of releaseTracks) {
+        lines.push(`--- TRACK ${track.trackOrder}: ${track.title.toUpperCase()} ---`);
+        lines.push("");
+        lines.push("[Description]");
+        lines.push(track.description?.trim() || "(No description provided)");
+        lines.push("");
+        lines.push("[Lyrics]");
+        lines.push(track.lyrics?.trim() || "(No lyrics provided)");
+        lines.push("");
+      }
+
+      const fileContents = lines.join("\n");
+      const fileName = `${normalizeReleaseTitleForFilename(release.title)}_details.txt`;
+      const targetPath = await save({
+        defaultPath: fileName,
+        filters: [{ name: "Text File", extensions: ["txt"] }],
+      });
+      if (!targetPath || Array.isArray(targetPath)) {
+        setMessage("Export canceled.");
+        return;
+      }
+
+      await writeTextFile(targetPath, fileContents);
+      setMessage(`Exported details to ${targetPath}`);
+    } catch (e) {
+      setError(`Failed to export details: ${String(e)}`);
+    }
+  }
+
   if (loading) {
     return <p>Loading...</p>;
   }
@@ -282,6 +359,7 @@ export function ReleaseDetailPage({ mode }: Props) {
           <button disabled={!canSave} onClick={handleSave}>Save</button>
           <button className="secondary" onClick={() => navigate("/releases")}>Back</button>
           {mode === "edit" && <button className="secondary" onClick={handleChooseImage}>{form.imagePath ? "Replace Image" : "Upload Image"}</button>}
+          {mode === "edit" && <button className="secondary" onClick={handleExportDetails}>Export Details</button>}
           {mode === "edit" && form.imagePath && <button className="danger" onClick={handleRemoveImage}>Remove Image</button>}
           {mode === "edit" && <button className="danger" onClick={handleDelete}>Delete</button>}
         </div>
@@ -294,7 +372,11 @@ export function ReleaseDetailPage({ mode }: Props) {
         <div className="panel">
           <div className="page-header">
             <h3>Tracks</h3>
-            <button onClick={() => { setShowAddDialog(true); reloadAvailableTracks(); }}>Add Track</button>
+            <button onClick={() => {
+              setAddTrackScope("Unassigned");
+              setShowAddDialog(true);
+              reloadAvailableTracks("Unassigned");
+            }}>Add Track</button>
           </div>
 
           <table className="table">
@@ -304,6 +386,8 @@ export function ReleaseDetailPage({ mode }: Props) {
                 <th>Internal Code</th>
                 <th>Title</th>
                 <th>Status</th>
+                <th>Tempo (BPM)</th>
+                <th>Key</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -314,6 +398,8 @@ export function ReleaseDetailPage({ mode }: Props) {
                   <td>{track.internalCode}</td>
                   <td>{track.title}</td>
                   <td>{track.status}</td>
+                  <td>{track.bpm ?? ""}</td>
+                  <td>{track.key ?? ""}</td>
                   <td>
                     <div className="row-actions">
                       <button className="secondary" disabled={idx === 0} onClick={() => handleMoveUp(track.trackId)}>Move Up</button>
@@ -325,7 +411,7 @@ export function ReleaseDetailPage({ mode }: Props) {
               ))}
               {tracks.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="muted">No tracks assigned yet.</td>
+                  <td colSpan={7} className="muted">No tracks assigned yet.</td>
                 </tr>
               )}
             </tbody>
@@ -341,7 +427,21 @@ export function ReleaseDetailPage({ mode }: Props) {
               <button className="secondary" onClick={() => setShowAddDialog(false)}>Close</button>
             </div>
             <div className="field">
-              <label>Search available tracks</label>
+              <label>Show</label>
+              <select
+                value={addTrackScope}
+                onChange={(e) => {
+                  const scope = e.target.value as "Unassigned" | "All";
+                  setAddTrackScope(scope);
+                  reloadAvailableTracks(scope);
+                }}
+              >
+                <option value="Unassigned">Unassigned</option>
+                <option value="All">All Tracks</option>
+              </select>
+            </div>
+            <div className="field" style={{ marginTop: 12 }}>
+              <label>Search tracks not yet on this release</label>
               <input
                 placeholder="Search by code or title"
                 value={addQuery}
@@ -374,7 +474,11 @@ export function ReleaseDetailPage({ mode }: Props) {
                 ))}
                 {filteredAvailableTracks.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="muted">No available tracks found.</td>
+                    <td colSpan={6} className="muted">
+                      {addTrackScope === "Unassigned"
+                        ? "No matching unassigned tracks found."
+                        : "Every matching track is already on this release."}
+                    </td>
                   </tr>
                 )}
               </tbody>

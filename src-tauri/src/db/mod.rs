@@ -5,12 +5,15 @@ use std::path::Path;
 
 use crate::fs::{
     allowed_image_extension, db_path, ensure_storage_dirs, managed_release_image_path,
+    resolve_portable_local_appdata_path, to_portable_local_appdata_path,
 };
 use crate::models::{
     DashboardSummary, Release, ReleaseInput, ReleaseTrackRow, Track, TrackInput, TrackListRow,
+    TrackRelease,
 };
 
 const MIGRATION_001: &str = include_str!("../../migrations/001_initial_schema.sql");
+const MIGRATION_002: &str = include_str!("../../migrations/002_many_to_many_release_tracks.sql");
 
 pub fn open_connection() -> Result<Connection, String> {
     ensure_storage_dirs()?;
@@ -28,6 +31,7 @@ pub fn initialize_database() -> Result<(), String> {
     let mut conn = open_connection()?;
     ensure_schema_migrations_table(&conn)?;
     apply_migration_if_needed(&mut conn, 1, "initial_schema", MIGRATION_001)?;
+    apply_migration_if_needed(&mut conn, 2, "many_to_many_release_tracks", MIGRATION_002)?;
     Ok(())
 }
 
@@ -136,8 +140,11 @@ fn map_track(row: &rusqlite::Row<'_>) -> rusqlite::Result<Track> {
     })
 }
 
-fn map_track_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackListRow> {
-    let assigned_release_id: Option<i64> = row.get("assigned_release_id")?;
+fn map_track_list_row(
+    row: &rusqlite::Row<'_>,
+    assigned_releases: Vec<TrackRelease>,
+) -> rusqlite::Result<TrackListRow> {
+    let is_assigned = !assigned_releases.is_empty();
     Ok(TrackListRow {
         id: row.get("id")?,
         internal_code: row.get("internal_code")?,
@@ -150,9 +157,8 @@ fn map_track_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackListRow>
         key: row.get("musical_key")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
-        assigned_release_id,
-        assigned_release_title: row.get("assigned_release_title")?,
-        availability: if assigned_release_id.is_some() {
+        assigned_releases,
+        availability: if is_assigned {
             "Assigned".to_string()
         } else {
             "Available".to_string()
@@ -160,7 +166,28 @@ fn map_track_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackListRow>
     })
 }
 
+fn releases_for_track(conn: &Connection, track_id: i64) -> rusqlite::Result<Vec<TrackRelease>> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id, r.internal_code, r.title, r.type
+             FROM releases r
+             JOIN release_tracks rt ON rt.release_id = r.id
+             WHERE rt.track_id = ?1
+             ORDER BY CASE r.type WHEN 'Album' THEN 0 WHEN 'EP' THEN 1 ELSE 2 END,
+                      r.title, r.id",
+    )?;
+    let rows = stmt.query_map(params![track_id], |row| {
+        Ok(TrackRelease {
+            id: row.get("id")?,
+            internal_code: row.get("internal_code")?,
+            title: row.get("title")?,
+            r#type: row.get("type")?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>()
+}
+
 fn map_release(row: &rusqlite::Row<'_>) -> rusqlite::Result<Release> {
+    let image_path: Option<String> = row.get("image_path")?;
     Ok(Release {
         id: row.get("id")?,
         internal_code: row.get("internal_code")?,
@@ -168,7 +195,11 @@ fn map_release(row: &rusqlite::Row<'_>) -> rusqlite::Result<Release> {
         r#type: row.get("type")?,
         status: row.get("status")?,
         description: row.get("description")?,
-        image_path: row.get("image_path")?,
+        image_path: image_path.map(|path| {
+            resolve_portable_local_appdata_path(&path)
+                .to_string_lossy()
+                .to_string()
+        }),
         track_count: row.get("track_count")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
@@ -180,15 +211,17 @@ pub fn list_tracks() -> Result<Vec<TrackListRow>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT t.id, t.internal_code, t.title, t.status, t.description, t.lyrics, t.notes, t.bpm, t.musical_key,
-                    t.created_at, t.updated_at, r.id AS assigned_release_id, r.title AS assigned_release_title
+                    t.created_at, t.updated_at
              FROM tracks t
-             LEFT JOIN release_tracks rt ON rt.track_id = t.id
-             LEFT JOIN releases r ON r.id = rt.release_id
              ORDER BY t.updated_at DESC, t.id DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], map_track_list_row)
+        .query_map([], |row| {
+            let track_id: i64 = row.get("id")?;
+            let releases = releases_for_track(&conn, track_id)?;
+            map_track_list_row(row, releases)
+        })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -290,19 +323,27 @@ pub fn delete_track(id: i64) -> Result<(), String> {
     Ok(())
 }
 
-pub fn list_available_tracks() -> Result<Vec<Track>, String> {
+pub fn list_available_tracks(release_id: i64, unassigned_only: bool) -> Result<Vec<Track>, String> {
     let conn = open_connection()?;
     let mut stmt = conn
         .prepare(
             "SELECT t.id, t.internal_code, t.title, t.status, t.description, t.lyrics, t.notes, t.bpm, t.musical_key, t.created_at, t.updated_at
              FROM tracks t
-             LEFT JOIN release_tracks rt ON rt.track_id = t.id
-             WHERE rt.track_id IS NULL
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM release_tracks rt
+                 WHERE rt.track_id = t.id AND rt.release_id = ?1
+             )
+             AND (
+                 ?2 = 0 OR NOT EXISTS (
+                     SELECT 1 FROM release_tracks assigned
+                     WHERE assigned.track_id = t.id
+                 )
+             )
              ORDER BY t.updated_at DESC, t.id DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], map_track)
+        .query_map(params![release_id, unassigned_only], map_track)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -315,16 +356,18 @@ pub fn search_tracks(query: String) -> Result<Vec<TrackListRow>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT t.id, t.internal_code, t.title, t.status, t.description, t.lyrics, t.notes, t.bpm, t.musical_key,
-                    t.created_at, t.updated_at, r.id AS assigned_release_id, r.title AS assigned_release_title
+                    t.created_at, t.updated_at
              FROM tracks t
-             LEFT JOIN release_tracks rt ON rt.track_id = t.id
-             LEFT JOIN releases r ON r.id = rt.release_id
              WHERE t.internal_code LIKE ?1 OR t.title LIKE ?1
              ORDER BY t.updated_at DESC, t.id DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(params![q], map_track_list_row)
+        .query_map(params![q], |row| {
+            let track_id: i64 = row.get("id")?;
+            let releases = releases_for_track(&conn, track_id)?;
+            map_track_list_row(row, releases)
+        })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -371,6 +414,10 @@ pub fn create_release(input: ReleaseInput) -> Result<Release, String> {
     validate_release_input(&input)?;
     let conn = open_connection()?;
     let now = now_iso();
+    let normalized_image_path = trim_to_opt(&input.image_path).map(|path| {
+        let resolved = resolve_portable_local_appdata_path(&path);
+        to_portable_local_appdata_path(&resolved)
+    });
     conn.execute(
         "INSERT INTO releases (internal_code, title, type, status, description, image_path, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -380,7 +427,7 @@ pub fn create_release(input: ReleaseInput) -> Result<Release, String> {
             input.r#type,
             input.status,
             trim_to_opt(&input.description),
-            trim_to_opt(&input.image_path),
+            normalized_image_path,
             now,
             now,
         ],
@@ -399,6 +446,10 @@ pub fn create_release(input: ReleaseInput) -> Result<Release, String> {
 pub fn update_release(id: i64, input: ReleaseInput) -> Result<Release, String> {
     validate_release_input(&input)?;
     let conn = open_connection()?;
+    let normalized_image_path = trim_to_opt(&input.image_path).map(|path| {
+        let resolved = resolve_portable_local_appdata_path(&path);
+        to_portable_local_appdata_path(&resolved)
+    });
     let updated = conn
         .execute(
             "UPDATE releases
@@ -416,7 +467,7 @@ pub fn update_release(id: i64, input: ReleaseInput) -> Result<Release, String> {
                 input.r#type,
                 input.status,
                 trim_to_opt(&input.description),
-                trim_to_opt(&input.image_path),
+                normalized_image_path,
                 now_iso(),
                 id,
             ],
@@ -442,7 +493,7 @@ pub fn delete_release(id: i64) -> Result<(), String> {
     let release = get_release_by_id(id)?;
     if let Some(release) = &release {
         if let Some(path) = &release.image_path {
-            let _ = fs::remove_file(path);
+            let _ = fs::remove_file(resolve_portable_local_appdata_path(path));
         }
     }
     let conn = open_connection()?;
@@ -455,7 +506,7 @@ pub fn list_tracks_for_release(release_id: i64) -> Result<Vec<ReleaseTrackRow>, 
     let conn = open_connection()?;
     let mut stmt = conn
         .prepare(
-            "SELECT rt.track_order, t.id AS track_id, t.internal_code, t.title, t.status, t.bpm, t.musical_key
+            "SELECT rt.track_order, t.id AS track_id, t.internal_code, t.title, t.status, t.description, t.lyrics, t.bpm, t.musical_key
              FROM release_tracks rt
              JOIN tracks t ON t.id = rt.track_id
              WHERE rt.release_id = ?1
@@ -470,6 +521,8 @@ pub fn list_tracks_for_release(release_id: i64) -> Result<Vec<ReleaseTrackRow>, 
                 internal_code: row.get("internal_code")?,
                 title: row.get("title")?,
                 status: row.get("status")?,
+                description: row.get("description")?,
+                lyrics: row.get("lyrics")?,
                 bpm: row.get("bpm")?,
                 key: row.get("musical_key")?,
             })
@@ -481,7 +534,7 @@ pub fn list_tracks_for_release(release_id: i64) -> Result<Vec<ReleaseTrackRow>, 
 }
 
 pub fn assign_track_to_release(track_id: i64, release_id: i64) -> Result<(), String> {
-    let mut conn = open_connection()?;
+    let conn = open_connection()?;
     // validate existence
     let track_exists: Option<i64> = conn
         .query_row(
@@ -509,14 +562,14 @@ pub fn assign_track_to_release(track_id: i64, release_id: i64) -> Result<(), Str
 
     let assigned: Option<i64> = conn
         .query_row(
-            "SELECT release_id FROM release_tracks WHERE track_id = ?1",
-            params![track_id],
+            "SELECT id FROM release_tracks WHERE track_id = ?1 AND release_id = ?2",
+            params![track_id, release_id],
             |row| row.get(0),
         )
         .optional()
         .map_err(|e| e.to_string())?;
     if assigned.is_some() {
-        return Err("Track is already assigned to a release".into());
+        return Err("Track is already assigned to this release".into());
     }
 
     let next_order: i64 = conn
@@ -539,7 +592,7 @@ pub fn assign_track_to_release(track_id: i64, release_id: i64) -> Result<(), Str
 }
 
 pub fn remove_track_from_release(track_id: i64, release_id: i64) -> Result<(), String> {
-    let mut conn = open_connection()?;
+    let conn = open_connection()?;
     let current_order: Option<i64> = conn
         .query_row(
             "SELECT track_order FROM release_tracks WHERE track_id = ?1 AND release_id = ?2",
@@ -576,7 +629,7 @@ pub fn move_track_down_in_release(track_id: i64, release_id: i64) -> Result<(), 
 }
 
 fn move_track_in_release(track_id: i64, release_id: i64, up: bool) -> Result<(), String> {
-    let mut conn = open_connection()?;
+    let conn = open_connection()?;
     let current_order: Option<i64> = conn
         .query_row(
             "SELECT track_order FROM release_tracks WHERE track_id = ?1 AND release_id = ?2",
@@ -609,9 +662,16 @@ fn move_track_in_release(track_id: i64, release_id: i64, up: bool) -> Result<(),
     };
 
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let temp_order: i64 = tx
+        .query_row(
+            "SELECT COALESCE(MAX(track_order), 0) + 1 FROM release_tracks WHERE release_id = ?1",
+            params![release_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
     tx.execute(
-        "UPDATE release_tracks SET track_order = 0 WHERE release_id = ?1 AND track_id = ?2",
-        params![release_id, track_id],
+        "UPDATE release_tracks SET track_order = ?3 WHERE release_id = ?1 AND track_id = ?2",
+        params![release_id, track_id, temp_order],
     )
     .map_err(|e| e.to_string())?;
     tx.execute(
@@ -644,8 +704,9 @@ pub fn set_release_image(release_id: i64, source_path: String) -> Result<Release
     }
 
     if let Some(old) = &release.image_path {
-        if old != dest.to_string_lossy().as_ref() {
-            let _ = fs::remove_file(old);
+        let old_path = resolve_portable_local_appdata_path(old);
+        if old_path != dest {
+            let _ = fs::remove_file(old_path);
         }
     }
 
@@ -654,7 +715,7 @@ pub fn set_release_image(release_id: i64, source_path: String) -> Result<Release
     let conn = open_connection()?;
     conn.execute(
         "UPDATE releases SET image_path = ?1, updated_at = ?2 WHERE id = ?3",
-        params![dest.to_string_lossy().to_string(), now_iso(), release_id],
+        params![to_portable_local_appdata_path(&dest), now_iso(), release_id],
     )
     .map_err(|e| e.to_string())?;
 
@@ -664,7 +725,7 @@ pub fn set_release_image(release_id: i64, source_path: String) -> Result<Release
 pub fn remove_release_image(release_id: i64) -> Result<Release, String> {
     let release = get_release_by_id(release_id)?.ok_or("Release not found")?;
     if let Some(path) = &release.image_path {
-        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(resolve_portable_local_appdata_path(path));
     }
     let conn = open_connection()?;
     conn.execute(
