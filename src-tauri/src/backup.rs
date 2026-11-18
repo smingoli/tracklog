@@ -64,7 +64,7 @@ pub fn create_backup(destination_dir: String) -> Result<String, String> {
             continue;
         }
 
-        let zip_path = format!("data/{}", rel.to_string_lossy().replace('\\', "/"));
+        let zip_path = rel.to_string_lossy().replace('\\', "/");
 
         if entry.file_type().is_dir() {
             zip_writer
@@ -100,11 +100,16 @@ pub fn restore_backup(backup_zip_path: String) -> Result<(), String> {
 
     extract_zip(&zip_path, &extraction_root)?;
 
-    let extracted_data = extraction_root.join("data");
-    if !extracted_data.join("catalog.db").exists() {
+    // New archives store catalog.db and images/ at the ZIP root for the Android
+    // Companion app. Older desktop backups used an additional data/ directory.
+    let extracted_data = if extraction_root.join("catalog.db").is_file() {
+        extraction_root.clone()
+    } else if extraction_root.join("data").join("catalog.db").is_file() {
+        extraction_root.join("data")
+    } else {
         let _ = fs::remove_dir_all(&extraction_root);
-        return Err("Invalid backup ZIP: catalog.db was not found in data/".into());
-    }
+        return Err("Invalid backup ZIP: catalog.db was not found at the root or in data/".into());
+    };
 
     let current_data = data_dir()?;
     if current_data.exists() {
