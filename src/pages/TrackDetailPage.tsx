@@ -158,20 +158,21 @@ export function TrackDetailPage({ mode }: Props) {
     try {
       await assignTrackToRelease(Number(id), Number(selectedReleaseId));
       await refreshAssignmentState(Number(id));
+      setSelectedReleaseId("");
       setMessage("Track assigned.");
     } catch (e) {
       setError(String(e));
     }
   }
 
-  async function handleRemoveFromRelease() {
-    if (!id || !trackRow?.assignedReleaseId) return;
+  async function handleRemoveFromRelease(releaseId: number) {
+    if (!id) return;
 
     const confirmed = window.confirm("Remove this track from its release?");
     if (!confirmed) return;
 
     try {
-      await removeTrackFromRelease(Number(id), trackRow.assignedReleaseId);
+      await removeTrackFromRelease(Number(id), releaseId);
       await refreshAssignmentState(Number(id));
       setMessage("Track removed from release.");
     } catch (e) {
@@ -180,6 +181,13 @@ export function TrackDetailPage({ mode }: Props) {
   }
 
   if (loading) return <p>Loading...</p>;
+
+  const assignedReleaseIds = new Set(
+    trackRow?.assignedReleases.map((release) => release.id) ?? []
+  );
+  const unassignedReleases = releases.filter(
+    (release) => !assignedReleaseIds.has(release.id)
+  );
 
   return (
     <div>
@@ -296,53 +304,44 @@ export function TrackDetailPage({ mode }: Props) {
 
       {mode === "edit" && id && (
         <div className="panel">
-          <h3>Release Assignment</h3>
+          <h3>Release Assignments</h3>
 
-          {!trackRow?.assignedReleaseId ? (
-            <>
-              <p className="muted">Available</p>
-              <div className="actions">
-                <select
-                  className="small-input"
-                  value={selectedReleaseId}
-                  onChange={(e) => setSelectedReleaseId(e.target.value)}
-                >
-                  <option value="">Select release</option>
-                  {releases.map((release) => (
-                    <option key={release.id} value={release.id}>
-                      {release.internalCode} - {release.title}
-                    </option>
-                  ))}
-                </select>
-
-                <button disabled={!selectedReleaseId} onClick={handleAssign}>
-                  Assign to Release
-                </button>
-              </div>
-            </>
+          {trackRow?.assignedReleases.length ? (
+            <div className="assignment-list">
+              {trackRow.assignedReleases.map((release) => (
+                <div className="assignment-row" key={release.id}>
+                  <span>
+                    <Link to={`/releases/${release.id}`}>{release.title}</Link>
+                    {" "}<span className="badge">{release.type}</span>
+                  </span>
+                  <button className="danger" onClick={() => handleRemoveFromRelease(release.id)}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
           ) : (
-            <>
-              <p>
-                Assigned to{" "}
-                <Link to={`/releases/${trackRow.assignedReleaseId}`}>
-                  {trackRow.assignedReleaseTitle}
-                </Link>
-              </p>
-
-              <div className="actions">
-                <Link
-                  className="btn secondary"
-                  to={`/releases/${trackRow.assignedReleaseId}`}
-                >
-                  Open Release
-                </Link>
-
-                <button className="danger" onClick={handleRemoveFromRelease}>
-                  Remove from Release
-                </button>
-              </div>
-            </>
+            <p className="muted">Not assigned to a release.</p>
           )}
+
+          <div className="actions" style={{ marginTop: 16 }}>
+            <select
+              className="small-input"
+              value={selectedReleaseId}
+              onChange={(e) => setSelectedReleaseId(e.target.value)}
+            >
+              <option value="">Select another release</option>
+              {unassignedReleases.map((release) => (
+                <option key={release.id} value={release.id}>
+                  {release.internalCode} - {release.title} ({release.type})
+                </option>
+              ))}
+            </select>
+
+            <button disabled={!selectedReleaseId} onClick={handleAssign}>
+              Assign to Release
+            </button>
+          </div>
         </div>
       )}
     </div>

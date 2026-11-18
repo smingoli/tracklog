@@ -43,9 +43,17 @@ pub struct TrackListRow {
     pub key: Option<String>,
     pub created_at: String,
     pub updated_at: String,
-    pub assigned_release_id: Option<i64>,
-    pub assigned_release_title: Option<String>,
+    pub assigned_releases: Vec<TrackRelease>,
     pub availability: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackRelease {
+    pub id: i64,
+    pub internal_code: String,
+    pub title: String,
+    pub r#type: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -82,6 +90,8 @@ pub struct ReleaseTrackRow {
     pub internal_code: String,
     pub title: String,
     pub status: String,
+    pub description: Option<String>,
+    pub lyrics: Option<String>,
     pub bpm: Option<i64>,
     pub key: Option<String>,
 }

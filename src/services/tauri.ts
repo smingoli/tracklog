@@ -37,8 +37,8 @@ export async function deleteTrack(id: number): Promise<void> {
   await invoke("delete_track", { id });
 }
 
-export async function listAvailableTracks(): Promise<Track[]> {
-  return invoke("list_available_tracks");
+export async function listAvailableTracks(releaseId: number, unassignedOnly: boolean): Promise<Track[]> {
+  return invoke("list_available_tracks", { releaseId, unassignedOnly });
 }
 
 export async function searchTracks(query: string): Promise<TrackListRow[]> {
@@ -93,6 +93,10 @@ export async function removeReleaseImage(releaseId: number): Promise<Release> {
   return invoke("remove_release_image", { releaseId });
 }
 
+export async function writeTextFile(path: string, contents: string): Promise<void> {
+  await invoke("write_text_file", { path, contents });
+}
+
 
 export async function getBackupLocation(): Promise<string | null> {
   return invoke("get_backup_location");
@@ -100,6 +104,14 @@ export async function getBackupLocation(): Promise<string | null> {
 
 export async function setBackupLocation(path: string): Promise<string | null> {
   return invoke("set_backup_location", { path });
+}
+
+export async function getBackupOnExit(): Promise<boolean> {
+  return invoke("get_backup_on_exit");
+}
+
+export async function setBackupOnExit(enabled: boolean): Promise<boolean> {
+  return invoke("set_backup_on_exit", { enabled });
 }
 
 export async function createBackup(destinationDir: string): Promise<string> {

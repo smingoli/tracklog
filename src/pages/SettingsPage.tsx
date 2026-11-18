@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   createBackup,
+  getBackupOnExit,
   getBackupLocation,
   initializeApp,
   restoreBackup,
+  setBackupOnExit,
   setBackupLocation,
 } from "../services/tauri";
 
 export function SettingsPage() {
   const [backupLocation, setBackupLocationState] = useState<string | null>(null);
+  const [backupOnExit, setBackupOnExitState] = useState(false);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -17,8 +20,12 @@ export function SettingsPage() {
   useEffect(() => {
     (async () => {
       await initializeApp();
-      const location = await getBackupLocation().catch(() => null);
+      const [location, enabled] = await Promise.all([
+        getBackupLocation().catch(() => null),
+        getBackupOnExit().catch(() => false),
+      ]);
       setBackupLocationState(location);
+      setBackupOnExitState(enabled);
     })();
   }, []);
 
@@ -43,6 +50,26 @@ export function SettingsPage() {
       setStatusMessage("Backup location saved.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Could not save backup location.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateBackupOnExit(enabled: boolean) {
+    if (enabled && !backupLocation) {
+      setErrorMessage("Please choose a backup location first.");
+      return;
+    }
+
+    setBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+    try {
+      const saved = await setBackupOnExit(enabled);
+      setBackupOnExitState(saved);
+      setStatusMessage(`Backup on exit ${saved ? "enabled" : "disabled"}.`);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not save backup-on-exit setting.");
     } finally {
       setBusy(false);
     }
@@ -107,6 +134,18 @@ export function SettingsPage() {
           <div className="field full">
             <label>Backup location</label>
             <input value={backupLocation ?? ""} readOnly placeholder="No backup location selected" />
+          </div>
+
+          <div className="field full">
+            <label>Backup on exit</label>
+            <select
+              value={backupOnExit ? "yes" : "no"}
+              onChange={(event) => updateBackupOnExit(event.target.value === "yes")}
+              disabled={busy || !backupLocation}
+            >
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
           </div>
 
           <div className="actions">

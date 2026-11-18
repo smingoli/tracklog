@@ -1,5 +1,7 @@
 # TrackLog
 
+Current application version: **0.1.7**.
+
 TrackLog is a local-first desktop application for managing music tracks and releases.
 
 It is designed for musicians, bands, producers, songwriters, and anyone who creates music. As a lightweight catalog tool, it helps organize song ideas, drafts, finished tracks, and release groupings such as albums, EPs, and singles.
@@ -18,12 +20,16 @@ TrackLog currently supports:
 - removing a track from a release
 - ordering tracks inside a release
 - filtering tracks by status and availability
+- filtering assigned tracks by release when Availability is set to Assigned
+- persisting list dropdown filter selections between view changes
 - filtering releases by type and status
 - searching tracks by internal code or title
 - uploading and managing release artwork locally
+- exporting release details to a user-selected `.txt` file (metadata, tracklist, description, lyrics)
 - showing dashboard summaries and recently updated items
 - configuring backup location from Settings
 - creating zipped backups (database + images)
+- backup on exit can be enabled/disabled
 - restoring app data from a backup ZIP
 
 Tracks and releases are managed locally on the user’s machine. The current implementation is focused on speed, simplicity, and a clear desktop workflow rather than cloud sync or collaboration.
@@ -92,10 +98,14 @@ The tracks page provides:
 - searchable track list
 - status filter
 - availability filter
+- conditional release filter (shown only when Availability = Assigned)
+- all assigned releases shown per track, with links to each release
+- sortable table headings for code, title, status, BPM, key, assigned releases and last updated
 - direct navigation to track detail
 - quick action to create a new track
 
 Track search is performed by internal code or title.
+Filter dropdown selections are persisted locally so returning to the page restores the previous filtering state. For tracks assigned to more than one release, the release filter matches any of those assignments.
 
 ### Track Detail
 Track detail supports both create and edit modes.
@@ -110,7 +120,7 @@ Track fields include:
 - lyrics
 - notes
 
-In create mode, TrackLog also supports **Save and Add Another** for faster consecutive data entry. In edit mode, a track can be assigned to a release or removed from its current release.
+In create mode, TrackLog also supports **Save and Add Another** for faster consecutive data entry. In edit mode, a track can be assigned to multiple releases (for example, an album and a single) without duplicating the track record.
 
 ### Releases
 The releases page provides:
@@ -144,9 +154,17 @@ Release fields include:
 In edit mode, users can:
 - upload or replace release artwork
 - remove release artwork
-- add available tracks to the release
+- add any track not already on that release
+- choose between unassigned tracks (the default) and all tracks when adding to a release
 - remove tracks from the release
 - reorder tracks using Move Up / Move Down actions
+- view track tempo (BPM) and key directly in the release track list
+- export release details to a text file using a native save dialog
+
+The release details export writes a text file that includes:
+- release metadata (title, code, type, status)
+- a top tracklist summary
+- per-track sections with `[Description]` and `[Lyrics]`
 
 Artwork is previewed through Tauri file handling and stored in TrackLog-managed local storage.
 
@@ -158,22 +176,16 @@ Users can:
 - choose a backup destination folder using the native system folder picker
 - create a timestamped ZIP backup of app data
 - restore app data from a selected ZIP backup
+- use the same backup ZIP for Android Companion imports
 
-Backups include both:
-- the SQLite database (`catalog.db`)
-- managed release artwork files under `images/releases/`
-
-The ZIP archive uses the same layout expected by the Android Companion app, with no enclosing `data/` directory:
+Desktop backup ZIPs are also suitable for the Android Companion app. The ZIP-root layout includes the database and managed artwork:
 
 ```text
-tracklog-backup-YYYYMMDD-HHMMSS.zip
-├── catalog.db
-└── images/
-    └── releases/
-        └── <release-artwork>
+catalog.db
+images/
+└── releases/
+    └── ...
 ```
-
-Restoring a backup keeps the desktop filesystem layout unchanged: the archive root is restored into `TrackLog/data/`. Restore also accepts older desktop backups with `data/catalog.db` inside the ZIP. Existing application data is replaced, not merged.
 
 ---
 
@@ -192,9 +204,11 @@ Supported track statuses:
 A release is a grouping of tracks such as an album, EP, or single.
 
 Each release can optionally store a managed local artwork path.
+On Windows, stored artwork paths are persisted with `%LocalAppData%` (for example, `%LocalAppData%\TrackLog\data\images\releases\...`) instead of a machine-specific absolute user profile path.
 
 ### Release Assignment
-A track can be assigned to only one release at a time. This is enforced in the database schema and backend logic. Track ordering inside a release is stored explicitly and can be changed later.
+A track can be assigned to multiple releases at the same time. The same track cannot be added to one release twice. Track ordering is stored independently inside each release and can be changed later.
+Reordering is performed with an in-range temporary order value so ordering operations never violate the database check constraint that requires `track_order > 0`.
 
 ---
 
@@ -219,6 +233,7 @@ TrackLog/data/images/releases/
 The backend creates these directories automatically when needed. File names are sanitized and derived from the release internal code.
 
 On Windows, this is typically under the user’s Local AppData directory.
+To keep data portable across machines, TrackLog persists release image paths in the database using `%LocalAppData%` tokenized paths and resolves them at runtime.
 
 ### App settings
 TrackLog also stores app-level settings (such as selected backup location) in:
@@ -246,10 +261,10 @@ Important rules currently enforced:
 - track status must be one of the supported values
 - release type and status must be valid
 - BPM must be positive when provided
-- a track may belong to only one release at a time
+- each release/track association must be unique
 - track order must be unique within a release
 
-The initial schema is defined in `src-tauri/migrations/001_initial_schema.sql`.
+The initial schema is defined in `src-tauri/migrations/001_initial_schema.sql`. Migration 002 normalizes existing catalogs to the many-to-many release/track association while preserving their current links and ordering.
 
 ---
 
@@ -260,12 +275,13 @@ The frontend uses Tauri commands for all data access and mutations. Current comm
 - initialize app storage and schema
 - list and search tracks
 - create, update, and delete tracks
-- list available tracks
+- list tracks not already assigned to a selected release
 - list releases
 - create, update, and delete releases
 - assign or remove tracks from releases
 - move tracks within a release
 - set or remove release images
+- write arbitrary text files (`write_text_file`) used by release detail export
 - get dashboard summary
 - get/set backup location
 - create zipped backup
@@ -331,18 +347,16 @@ src-tauri/target/release/bundle/
 
 ## Windows Nightly Installer
 
-The Windows Nightly variant uses `src-tauri/tauri.nightly.conf.json` as a Tauri 2 configuration overlay. It installs separately from the stable app, but both variants deliberately share the same catalogue under `%LOCALAPPDATA%\\TrackLog\\data` (see `src-tauri/src/fs.rs`).
-
-From the repository root on a Windows machine with the Node.js, Rust/MSVC, and Tauri build prerequisites installed:
+The recovered Nightly variant uses `src-tauri/tauri.nightly.conf.json`. It has a separate Windows application identity and NSIS per-user installation, with the existing `TrackLog-Nightly.exe` binary name. Both desktop variants intentionally use the shared catalogue directory `%LOCALAPPDATA%\\TrackLog\\data` defined by `src-tauri/src/fs.rs`.
 
 ```cmd
 npm ci
 npm run tauri build -- --config src-tauri/tauri.nightly.conf.json --bundles nsis
 ```
 
-The NSIS installer is generated under `src-tauri/target/release/bundle/nsis/`. The Nightly executable is named `TrackLog-Nightly.exe`, and the per-user installation is named `TrackLog Nightly`. The version comes from the base `tauri.conf.json` and is not duplicated in the overlay.
+The installer is generated in `src-tauri/target/release/bundle/nsis/`.
 
-**Important:** Back up `%LOCALAPPDATA%\\TrackLog\\data` before testing a new installer or restore workflow, and do not run stable and nightly simultaneously against the shared SQLite catalogue.
+**Important:** Back up `%LOCALAPPDATA%\\TrackLog\\data` before testing upgrades/restores and do not run stable and Nightly simultaneously against the shared SQLite database.
 
 ---
 
@@ -400,6 +414,7 @@ Stefano Mingoli
 
 ## License
 
-No license has been defined yet.
+TrackLog is licensed under the **GNU General Public License v3.0 (GPL-3.0-only)**.
 
-Until a license is added, this repository should be treated as all rights reserved by default.
+- See [`LICENSE`](./LICENSE) for the full license text.
+- See [`docs/licensing.md`](./docs/licensing.md) for practical guidance on using, modifying, and redistributing TrackLog under GPL v3.
