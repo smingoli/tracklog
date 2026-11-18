@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "TrackLog Nightly",
+  "mainBinaryName": "TrackLog-Nightly",
+  "identifier": "net.mind-it.tracklog.nightly",
+  "app": {
+    "windows": [
+      {
+        "title": "TrackLog Nightly"
+      }
+    ]
+  },
+  "bundle": {
+    "targets": [
+      "nsis"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "perUser"
+      }
+    }
+  }
+}
